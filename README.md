@@ -20,7 +20,7 @@ npm run build           # builds the widget (web/dist) and the server (server/di
 npm start               # http://localhost:3000
 ```
 
-Open <http://localhost:3000/embed-test>. To try a real cross-site embed on your own machine, add `http://127.0.0.1:*` to `ALLOWED_EMBED_ORIGINS` in `.env`, restart, and open <http://127.0.0.1:3000/embed-test>. The page is then on a different origin from the widget, as it is on GrowthZone.
+Open <http://localhost:3000/embed-test> to see the chatbot embedded the way a host page shows it, or <http://localhost:3000/embed-test?mode=all> for the full test page with the embed codes and the bubble and fallback versions. To try a real cross-site embed on your own machine, add `http://127.0.0.1:*` to `ALLOWED_EMBED_ORIGINS` in `.env`, restart, and open <http://127.0.0.1:3000/embed-test>. The page is then on a different origin from the widget, as it is on GrowthZone.
 
 ## Development
 
@@ -120,7 +120,7 @@ Notes:
 - `data-site` is passed through for tracking. Use `divorceamicably` on divorceamicably.com and a key of your choice on amicabledivorce.net (for example `amicabledivorce`). Keys use lowercase letters, digits and dashes.
 - If the editor strips `data-*` attributes, put the settings in the script address instead, for example `https://YOUR-HOST/embed.js?mode=bubble&site=divorceamicably`.
 - If the editor drops the `<div>`, the inline widget appears where the script tag is.
-- `https://YOUR-HOST/embed-test` shows all three versions live, with the code to copy, and can narrow the width to 320, 375, 600 or 800 px.
+- `https://YOUR-HOST/embed-test` shows only the chatbot, embedded inline. `https://YOUR-HOST/embed-test?mode=all` shows all three versions live with the code to copy (`?mode=inline`, `bubble` or `fallback` shows one), and `&width=320`, `375`, `600` or `800` narrows the embed area.
 
 How it works:
 
@@ -160,7 +160,27 @@ The tests cover:
 
 Set `E2E_PORT` to use a port other than 4317.
 
-## Deploying the M1 test build
+## Deployment
+
+### Render (current)
+
+The assistant runs on Render as the web service **adn-assistant**: https://adn-assistant.onrender.com, Starter plan, Ohio region. It deploys automatically whenever `main` on GitHub (growthguild/adn-professional-matcher, private) changes.
+
+| Setting       | Value                                                                       |
+| ------------- | --------------------------------------------------------------------------- |
+| Build command | `npm ci --include=dev && npm run build`                                     |
+| Start command | `npm start`                                                                 |
+| Node version  | from `.nvmrc` (24)                                                          |
+| Environment   | `NODE_ENV=production`, `PUBLIC_BASE_URL=https://adn-assistant.onrender.com` |
+|               | `ALLOWED_EMBED_ORIGINS=*` (first GrowthZone test only; narrow it after)     |
+
+Notes:
+
+- `--include=dev` is required. With `NODE_ENV=production`, a plain `npm ci` skips the build tools (Vite, TypeScript) and the build fails.
+- Render supplies `PORT` and handles HTTPS. Set any other settings from `.env.example` in the service's Environment page, never in git.
+- If the service gets a custom domain later, change `PUBLIC_BASE_URL` to match and update the embed codes.
+
+### Your own server
 
 1. On the server, install Node 24 LTS, copy the repo, and run `npm ci && npm run build`.
 2. Create `.env` with at least:

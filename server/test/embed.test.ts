@@ -35,8 +35,24 @@ describe('GET /embed.js', () => {
 });
 
 describe('GET /embed-test', () => {
-  it('shows and runs the inline, bubble and fallback embed codes', async () => {
+  it('shows only the chatbot by default, embedded inline', async () => {
     const res = await request(testApp()).get('/embed-test').expect(200);
+    expect(res.headers['content-type']).toMatch(/^text\/html/);
+    expect(res.text).toContain('<div id="adn-assistant"></div>');
+    expect(res.text).toContain(
+      `<script src="${BASE_URL}/embed.js" data-target="adn-assistant" data-site="divorceamicably" async></script>`,
+    );
+    expect(res.text).toContain(`<title>${copy.widget.documentTitle}</title>`);
+    // Nothing else: no bubble, no fallback iframe, no code, headings or links.
+    expect(res.text).not.toContain('data-mode="bubble"');
+    expect(res.text).not.toContain('<iframe');
+    expect(res.text).not.toContain('<pre');
+    expect(res.text).not.toMatch(/<h1|<h2|<nav|<a /);
+    expect(res.text.match(/<script /g)).toHaveLength(1);
+  });
+
+  it('shows and runs the inline, bubble and fallback embed codes with ?mode=all', async () => {
+    const res = await request(testApp()).get('/embed-test?mode=all').expect(200);
     expect(res.headers['content-type']).toMatch(/^text\/html/);
     const inline = `<script src="${BASE_URL}/embed.js" data-target="adn-assistant" data-site="divorceamicably" async></script>`;
     const bubble = `<script src="${BASE_URL}/embed.js" data-mode="bubble" data-site="divorceamicably" async></script>`;
@@ -59,9 +75,20 @@ describe('GET /embed-test', () => {
     expect(res.text).not.toContain('id="fallback"');
   });
 
+  it('links back to the chatbot-only view and keeps the test view in its links', async () => {
+    const res = await request(testApp()).get('/embed-test?mode=bubble&width=375').expect(200);
+    expect(res.text).toContain('<a href="/embed-test?width=375">Chatbot only</a>');
+    expect(res.text).toContain('<a href="/embed-test?mode=all&amp;width=375">All</a>');
+    expect(res.text).toContain('<a href="/embed-test?mode=bubble&amp;width=320">320</a>');
+    expect(res.text).toContain('<a href="/embed-test?mode=bubble">Full</a>');
+  });
+
   it('sets the test width only from the fixed list', async () => {
     const app = testApp();
     expect((await request(app).get('/embed-test?width=320')).text).toContain('max-width:320px');
+    expect((await request(app).get('/embed-test?mode=all&width=320')).text).toContain(
+      'max-width:320px',
+    );
     expect((await request(app).get('/embed-test?width=999')).text).not.toContain('max-width:999px');
   });
 
@@ -71,7 +98,7 @@ describe('GET /embed-test', () => {
       .query({ mode: '<script>', site: '"><script>alert(1)</script>' })
       .expect(200);
     expect(res.text).not.toContain('alert(1)');
-    expect(res.text).toContain('id="inline"');
+    expect(res.text).not.toContain('<pre');
     expect(res.text).toContain('data-site="divorceamicably"');
   });
 

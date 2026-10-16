@@ -94,7 +94,7 @@ test.describe('inline embed (the default)', () => {
 });
 
 test('ignores resize messages from another frame on the widget origin', async ({ page }) => {
-  await page.goto('/embed-test');
+  await page.goto('/embed-test?mode=all');
   const inline = inlineFrame(page);
   await expect(inline.contentFrame().getByText(welcome.message)).toBeVisible();
   const fallback = page.locator('#fallback iframe').contentFrame();
@@ -180,8 +180,28 @@ test('fallback iframe (if a page editor strips scripts) shows the assistant', as
   await expect(widget.getByText(copy.steps.proInfo.message)).toBeVisible();
 });
 
-test('/embed-test shows the inline, bubble and fallback embeds together', async ({ page }) => {
+test('/embed-test shows only the chatbot by default', async ({ page }) => {
   await page.goto('/embed-test');
+  const widget = inlineFrame(page).contentFrame();
+  await expect(widget.getByText(welcome.message)).toBeVisible();
+  await expect(page.locator('iframe')).toHaveCount(1);
+  await expect(page.getByRole('button', { name: copy.embed.bubbleLabel })).toHaveCount(0);
+  await expect(page.locator('h1, h2, nav, pre, a')).toHaveCount(0);
+  // The chatbot fits the screen, with no horizontal scrolling on the page.
+  await expect
+    .poll(() => page.evaluate(() => document.documentElement.scrollWidth <= window.innerWidth))
+    .toBe(true);
+  const box = await inlineFrame(page).boundingBox();
+  const viewport = page.viewportSize();
+  expect(box && viewport && box.y + box.height <= viewport.height).toBe(true);
+  await widget.getByRole('button', { name: welcome.optionDivorce }).click();
+  await expect(widget.getByText(copy.steps.location.message)).toBeVisible();
+});
+
+test('/embed-test?mode=all shows the inline, bubble and fallback embeds together', async ({
+  page,
+}) => {
+  await page.goto('/embed-test?mode=all');
   await expect(inlineFrame(page).contentFrame().getByText(welcome.message)).toBeVisible();
   await expect(page.getByRole('button', { name: copy.embed.bubbleLabel })).toBeVisible();
   await expect(
