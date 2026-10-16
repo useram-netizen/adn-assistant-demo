@@ -1,0 +1,13 @@
+node_modules
+dist
+coverage
+package-lock.json
+# Kept word for word: the brief and the rules repeated from it
+docs/SPEC.md
+CLAUDE.md
+# Client data is input only
+data
+web/playwright-report
+web/test-results
+server/.mail-preview
+server/test/fixtures

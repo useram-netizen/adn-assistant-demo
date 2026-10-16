@@ -1,0 +1,30 @@
+# Dependencies and builds
+node_modules/
+dist/
+coverage/
+*.tsbuildinfo
+
+# Secrets: only .env.example is committed (spec rule 5)
+.env
+.env.*
+!.env.example
+
+# The client's member list (names and emails) stays off GitHub. The live server doesn't
+# need it; the import reads it from the computer it runs on.
+data/members*.csv
+data/members*.xlsx
+
+# Email previews written in EMAIL_MODE=preview
+server/.mail-preview/
+
+# Playwright output
+web/playwright-report/
+web/test-results/
+web/blob-report/
+
+# OS and editor files
+.DS_Store
+*.log
+.vscode/*
+!.vscode/extensions.json
+.idea/
