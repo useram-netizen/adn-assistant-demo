@@ -66,6 +66,9 @@ export function ChatLayout({
           <p className="adn-subtitle">{copy.widget.headerSubtitle}</p>
         </div>
       </header>
+      {/* A scrollable region must be keyboard-focusable when nothing inside it is (WCAG 2.1.1;
+          axe: scrollable-region-focusable), so keyboard users can scroll it. */}
+      {/* eslint-disable-next-line jsx-a11y-x/no-noninteractive-tabindex */}
       <div className="adn-log" tabIndex={focusableLog ? 0 : -1} ref={log}>
         <div className="adn-log-content" ref={logContentRef}>
           {children}
