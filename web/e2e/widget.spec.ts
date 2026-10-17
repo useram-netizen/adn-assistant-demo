@@ -162,6 +162,24 @@ test.describe('the widget page and its conversation (UX review)', () => {
     expect(sizes.scroll).toBeLessThanOrEqual(sizes.client + 1);
   });
 
+  test('a state can be typed as its postal code: "GA" is Georgia and "TX" is Texas', async ({
+    page,
+  }) => {
+    await page.goto('/widget?site=divorceamicably');
+    await page.getByRole('button', { name: welcome.optionDivorce }).click();
+    const states = page.getByRole('combobox', { name: 'Your state' });
+    await states.fill('GA');
+    await expect(page.getByRole('option').first()).toHaveText('Georgia');
+    await states.press('Enter');
+    await expect(page.getByText('Which county in Georgia do you live in?')).toBeVisible();
+
+    await page.getByRole('button', { name: copy.widget.startOver }).click();
+    await page.getByRole('button', { name: welcome.optionDivorce }).click();
+    await page.getByRole('combobox', { name: 'Your state' }).fill('tx');
+    await page.getByRole('combobox', { name: 'Your state' }).press('Enter');
+    await expect(page.getByText('Which county in Texas do you live in?')).toBeVisible();
+  });
+
   test('the county list opens at the top, with the highlighted option in view', async ({
     page,
   }) => {
