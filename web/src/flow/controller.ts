@@ -121,6 +121,8 @@ export class ChatController {
   private state: ChatState = initialState();
   private readonly listeners = new Set<() => void>();
   private epoch = 0;
+  /** How many runs are still going in the latest epoch (see `run`). */
+  private runs = { epoch: -1, count: 0 };
   private nextId = 1;
   /** The contact form as typed so far; kept outside the state so typing doesn't re-render. */
   private draft: ContactValues | null = null;
@@ -909,14 +911,21 @@ export class ChatController {
     return epoch === this.epoch;
   }
 
-  /** Runs work that takes time: the typing indicator shows (busy) and no input is accepted. */
+  /**
+   * Runs work that takes time: the typing indicator shows (busy) and no input is accepted.
+   * A step that moves on from inside a run starts a second one, so the indicator goes off only
+   * when the last run of the epoch ends, not when the first one hands over.
+   */
   private run(work: (epoch: number) => Promise<void>): Promise<void> {
     const epoch = this.epoch;
+    if (this.runs.epoch !== epoch) this.runs = { epoch, count: 0 };
+    this.runs.count += 1;
     this.set({ busy: true, retry: null });
     return work(epoch)
       .catch((error: unknown) => this.fail(epoch, () => this.restart(), error))
       .finally(() => {
-        if (epoch === this.epoch) this.set({ busy: false });
+        if (this.runs.epoch === epoch) this.runs.count -= 1;
+        if (epoch === this.epoch && this.runs.count === 0) this.set({ busy: false });
       });
   }
 

@@ -18,6 +18,24 @@ async function measureInline(page: Page) {
   return { height, overflow };
 }
 
+/** The iframe's height once it has stopped changing (the widget reports its size as it loads). */
+async function settledInlineHeight(page: Page): Promise<number> {
+  let last = -1;
+  let steady = 0;
+  await expect
+    .poll(
+      async () => {
+        const { height } = await measureInline(page);
+        steady = height === last ? steady + 1 : 0;
+        last = height;
+        return steady;
+      },
+      { intervals: [200] },
+    )
+    .toBeGreaterThanOrEqual(3);
+  return last;
+}
+
 test.describe('inline embed (the default)', () => {
   test.beforeEach(async ({ page }) => {
     await page.goto('/embed-test?mode=inline');
@@ -83,13 +101,12 @@ test.describe('inline embed (the default)', () => {
 
   test('ignores resize messages that do not come from its own iframe', async ({ page }) => {
     await expect(inlineFrame(page).contentFrame().getByText(welcome.message)).toBeVisible();
-    await expect.poll(async () => (await measureInline(page)).overflow).toBeLessThanOrEqual(1);
-    const before = await measureInline(page);
+    const before = await settledInlineHeight(page);
 
     // From the host page itself (wrong origin).
     await page.evaluate(() => window.postMessage({ type: 'adn:resize', height: 1500 }, '*'));
     await page.waitForTimeout(250);
-    expect((await measureInline(page)).height).toBe(before.height);
+    expect((await measureInline(page)).height).toBe(before);
   });
 });
 
@@ -99,15 +116,14 @@ test('ignores resize messages from another frame on the widget origin', async ({
   await expect(inline.contentFrame().getByText(welcome.message)).toBeVisible();
   const fallback = page.locator('#fallback iframe').contentFrame();
   await expect(fallback.getByText(welcome.message)).toBeVisible();
-  await expect.poll(async () => (await measureInline(page)).overflow).toBeLessThanOrEqual(1);
-  const before = await measureInline(page);
+  const before = await settledInlineHeight(page);
 
   // The right origin, but sent by the fallback iframe rather than the inline one.
   await fallback
     .locator('body')
     .evaluate(() => window.parent.postMessage({ type: 'adn:resize', height: 1500 }, '*'));
   await page.waitForTimeout(250);
-  expect((await measureInline(page)).height).toBe(before.height);
+  expect((await measureInline(page)).height).toBe(before);
 });
 
 test.describe('bubble embed', () => {

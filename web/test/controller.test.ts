@@ -10,6 +10,7 @@ import {
   option,
   unclear,
   validContact,
+  type Harness,
 } from './support';
 
 describe('the main path', () => {
@@ -1025,5 +1026,63 @@ describe('the contact details', () => {
         firstName: 'Jane',
       }),
     );
+  });
+});
+
+describe('the typing indicator', () => {
+  /** Counts the moments the screen had nothing to show: no typing dots, no step, nothing to retry. */
+  async function deadMoments(h: Harness, action: () => void): Promise<number> {
+    let dead = 0;
+    const stop = h.controller.subscribe(() => {
+      const { busy, step, retry } = h.state();
+      if (!busy && !step && !retry) dead += 1;
+    });
+    action();
+    await h.settle();
+    stop();
+    return dead;
+  }
+
+  it('stays on from a typed answer to the next question (the situation)', async () => {
+    const h = harness();
+    await advanceTo(h, 'situation');
+    expect(await deadMoments(h, () => h.controller.say('We agree on almost everything'))).toBe(0);
+    expect(h.state().step).toBe('category');
+  });
+
+  it('stays on from a typed place to its "Did you mean…?" (county help)', async () => {
+    const h = harness({
+      county: vi.fn(() =>
+        Promise.resolve({
+          countyFips: '13067',
+          countyName: 'Cobb County',
+          confidence: 'high' as const,
+          reply: '',
+          safety: false,
+          source: 'ai' as const,
+        }),
+      ),
+    });
+    await advanceTo(h, 'county');
+    h.controller.choose('not_sure');
+    await h.settle();
+    expect(await deadMoments(h, () => h.controller.say('Marietta'))).toBe(0);
+    expect(h.state().step).toBe('county_confirm');
+  });
+
+  it('stays on when a typed answer is accepted and the conversation moves on (with a reply and the safety card)', async () => {
+    const h = harness({
+      interpret: vi.fn(() =>
+        Promise.resolve(
+          option('divorce', { reply: 'I’m so sorry you’re facing this.', safety: true }),
+        ),
+      ),
+    });
+    h.controller.start();
+    await h.settle();
+    expect(
+      await deadMoments(h, () => h.controller.say('My husband hits me and I’m scared to leave')),
+    ).toBe(0);
+    expect(h.state().step).toBe('location');
   });
 });

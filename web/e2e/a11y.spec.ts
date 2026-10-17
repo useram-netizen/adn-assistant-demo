@@ -27,6 +27,8 @@ test.describe('accessibility (WCAG 2.2 AA, automated)', () => {
   });
 
   test('the conversation screens', async ({ page }) => {
+    // Eleven axe checks on one walk through the whole conversation: slow on a busy machine.
+    test.slow();
     await accessible(page, 'welcome');
 
     await page.getByRole('button', { name: welcome.optionDivorce }).click();

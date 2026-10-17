@@ -205,7 +205,7 @@ adminRouter({ config, store, directory }): Router           // GET /admin/stats,
 
 ## Widget conversation design
 
-The whole conversation is `ChatController` (web/src/flow/controller.ts): plain TypeScript with no React in it, so the flow is tested without a browser (web/test/controller.test.ts uses a fake server). The React components only show its state and call its actions. Work that takes time (typing pauses, server calls) runs under an "epoch": Back, Start over and failures start a new epoch, so a late answer from the server can never land on a screen the visitor has left. Back restores a snapshot of the earlier step (its answers, transcript length, situation text, results and form draft).
+The whole conversation is `ChatController` (web/src/flow/controller.ts): plain TypeScript with no React in it, so the flow is tested without a browser (web/test/controller.test.ts uses a fake server). The React components only show its state and call its actions. Work that takes time (typing pauses, server calls) runs under an "epoch": Back, Start over and failures start a new epoch, so a late answer from the server can never land on a screen the visitor has left. The typing indicator (`busy`) stays on until the last run of the epoch ends, because a step that moves on from inside a run starts another one. Back restores a snapshot of the earlier step (its answers, transcript length, situation text, results and form draft).
 
 State lives in memory only.
 

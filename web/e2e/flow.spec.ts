@@ -83,6 +83,20 @@ function files(dir: string, pattern: RegExp): string[] {
   }
 }
 
+/**
+ * The saved email previews of one kind that mention `needle`. Other tests run at the same time
+ * and save their own, so a test counts the ones that carry its own address.
+ */
+function previewsFor(dir: string, kind: RegExp, needle: string): string[] {
+  return files(dir, kind).filter((name) => {
+    try {
+      return readFileSync(join(dir, name), 'utf8').includes(needle);
+    } catch {
+      return false;
+    }
+  });
+}
+
 interface Lead {
   id: string;
   kind: string;
@@ -107,10 +121,10 @@ function leads(dir: string): Lead[] {
 test.describe('the main path (AI on)', () => {
   test('welcome to a sent request: Platinum first, 35 results, emails only previewed', async ({
     page,
-  }) => {
+  }, testInfo) => {
     const chat = await open(page);
     const { widget } = chat;
-    const before = files(MAIL_PREVIEW_DIR, /professional/).length;
+    const email = `jane.doe+${testInfo.project.name}${Date.now()}@example.org`;
 
     await toStage(chat, ['Georgia', 'georg'], ['Fulton County', 'fulton']);
     await chat.button(copy.steps.stage.options.ready).click();
@@ -148,19 +162,19 @@ test.describe('the main path (AI on)', () => {
     await widget.getByRole('button', { name: 'Contact selected (2)' }).click();
 
     await expect(widget.getByRole('textbox', { name: copy.widget.inputLabel })).toBeHidden();
-    await fillForm(chat);
+    await fillForm(chat, email);
     await widget.getByRole('button', { name: copy.form.submit }).click();
     await expect(
       widget.getByText(/Done! Your request went to .+\. You'll also get a confirmation email\./),
     ).toBeVisible();
 
     // Nothing was sent: the emails were saved as previews, and the lead was saved.
-    await expect.poll(() => files(MAIL_PREVIEW_DIR, /professional/).length).toBe(before + 2);
-    expect(files(MAIL_PREVIEW_DIR, /client/).length).toBeGreaterThan(0);
+    await expect.poll(() => previewsFor(MAIL_PREVIEW_DIR, /professional/, email).length).toBe(2);
+    await expect
+      .poll(() => previewsFor(MAIL_PREVIEW_DIR, /client/, email).length)
+      .toBeGreaterThan(0);
     expect(
-      leads(STORAGE_DIR).some(
-        (lead) => lead.kind === 'pros' && lead.contact.email === 'jane.doe@example.org',
-      ),
+      leads(STORAGE_DIR).some((lead) => lead.kind === 'pros' && lead.contact.email === email),
     ).toBe(true);
   });
 
