@@ -19,6 +19,13 @@ The owner changed these decisions; the sections below are updated to match.
   - The situation step is then skipped, and the text is used for the suggestions and the form pre-fill.
 - **/embed-test:** shows only the chatbot; `/embed-test?mode=all` shows the full test page.
 - **Placeholder wording:** "isn't connected yet" style messages are not allowed anywhere.
+- **After the independent review (2026-10-17):**
+  - A member file that cannot be used stops the server at startup (the host keeps the previous version); `/api/health` answers 503 when nobody can be found.
+  - `EMAIL_MODE=redirect` and `live` need `SMTP_HOST` and `EMAIL_FROM` (live also `TRACY_EMAIL`); `ADMIN_TOKEN` needs 24 or more characters.
+  - The form answers once the lead is saved; emails go out in the background with the same retries. The client's confirmation email lists who was contacted and the what's next links, and repeats none of what they typed except a plain first name.
+  - `results_shown` and `no_match` events are recorded by the server (from the search itself), not sent by the widget; every event value comes from a fixed list.
+  - A name given in typed text ("my name is…", "I'm…", "this is…", "… here") is removed with the emails and phone numbers before text goes to OpenAI.
+  - `STORE_TRANSCRIPTS` is not implemented: what visitors type is never stored (setting it to true only logs a warning).
 
 ## Files I've given you
 - data/members.csv: the client's member list, exported from their Google Sheet. Treat it as input only and never edit it. Later updates may arrive as .csv or .xlsx, so the import must accept both. It is committed to the private repo, and the server loads it at startup (`MEMBERS_FILE`).

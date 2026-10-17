@@ -129,15 +129,16 @@ adminRouter({ config, store, directory }): Router           // GET /admin/stats,
 
 - **`createStore(config)`:**
   - With `MONGODB_URI`: a `ResilientStore` that tries MongoDB (official driver, short timeouts, lazy connect, indexes) and falls back to the file store on any error, logging `storage_fallback` with no personal data.
-  - Without it: a `FileStore` in `config.paths.storageDir`, using JSON Lines with serialized appends and atomic rewrites for lead updates.
+  - Without it: a `FileStore` in `config.paths.storageDir`, using JSON Lines with serialized appends and atomic rewrites for lead updates. The folder is 0700 and the files 0600. The events log stops growing at 25 MB and the gaps log at 5 MB (leads never are limited); a full log says so once an hour (`storage_file_full`).
   - Collections and files: `leads`, `gaps`, `events`.
   - `init()` never throws.
 - **POST /events:**
-  - Body: `EventsRequest`. The type must be in `CLIENT_EVENT_TYPES`, and the data must match that type's exact shape in `EventDataByType` (primitives only, short strings, no extra keys).
-  - At most 50 events; `at` is an ISO date.
+  - Body: `EventsRequest`. The type must be in `CLIENT_EVENT_TYPES`, and the data must match that type's exact shape in `EventDataByType` (no extra keys). Screens come from `STEP_IDS` (shared/api.ts); an answer is a state code, a county code or one of the named option ids (events/schemas.ts), so nothing typed can be stored.
+  - At most 50 events a request, 30 requests a minute per address, 400 events per session (the rest are ignored, with a 204). `at` is an ISO date.
   - Store with `source: 'client'` and `receivedAt`. Respond `204`.
-- **`EventSink.record()`:** records server-side events (`ai_call`, `lead_submitted`, `tracy_form_submitted`, `email_failed`) without blocking.
-- **Admin:** Bearer `ADMIN_TOKEN`, compared in constant time. Unset → `404 { error: 'admin_disabled' }`; wrong token → `401`.
+- **`EventSink.record()`:** records server-side events without blocking: `ai_call`, `lead_submitted`, `tracy_form_submitted`, `email_failed`, and `results_shown` / `no_match`, which POST /match records from the real search (the widget does not send those two).
+- **Rate limiter (security/rateLimit.ts):** a fixed window per key; the key is the visitor's address, with IPv6 counted per /64. Behind Render it is `CF-Connecting-IP`, else the last `X-Forwarded-For` entry (the one the proxy added). At most 50,000 keys are kept, swept every few seconds.
+- **Admin:** Bearer `ADMIN_TOKEN` (24+ characters), compared in constant time. Unset → `404 { error: 'admin_disabled' }`; wrong token → `401`; ten wrong tokens from one address in 15 minutes → `429` for that address.
   - `GET /admin/stats?from=&to=`: sessions, sessions that reached results, leads, match rate, AI calls and failures, and leads per member (id, name, count).
   - `GET /admin/gaps.csv`: no-match searches grouped by state, county and category, with counts.
 - **Retention:** with `LEAD_RETENTION_DAYS`, delete older leads daily.
@@ -159,10 +160,10 @@ adminRouter({ config, store, directory }): Router           // GET /admin/stats,
      - all the client details
      - the `foundYou` line, with the site name from `copy.sites`
      - `replyTo` set to the client
-  6. Send the client a confirmation listing who was contacted, plus the what's next links that are set.
+  6. Send the client a confirmation listing who was contacted, plus the what's next links that are set. It repeats nothing the visitor typed except a plain first name, and one address gets at most 5 confirmations a day (the professionals still get the request).
   7. Send an optional copy to `LEAD_COPY_TO`.
   8. Record each recipient's status. Retry failures up to 3 times with backoff, update the stored lead, and record `email_failed` when a recipient gives up.
-  9. Respond `{ ok: true, contacted: names, safety }`, where `safety` means the message matched the keywords.
+  9. Respond `{ ok: true, contacted: names, safety }`, where `safety` means the message matched the keywords. The response does not wait for the emails: sending is background work tracked by the `Delivery` (index.ts waits for `delivery.idle()` at shutdown).
 - **POST /contact-tracy (`TracyRequest`):**
   - The same contact fields, with `reason` set to `no_match` or `outside`.
   - Save the lead with `kind: 'tracy'`, email `TRACY_EMAIL` (Reply-To the visitor, with location and category), and send the visitor a confirmation.
