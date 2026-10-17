@@ -22,7 +22,11 @@ export class SessionBudget {
 
   constructor(
     private readonly maxCalls: number,
-    { ttlMs = SESSION_TTL_MS, maxSessions = MAX_TRACKED_SESSIONS, now = Date.now }: SessionBudgetOptions = {},
+    {
+      ttlMs = SESSION_TTL_MS,
+      maxSessions = MAX_TRACKED_SESSIONS,
+      now = Date.now,
+    }: SessionBudgetOptions = {},
   ) {
     this.ttlMs = ttlMs;
     this.maxSessions = maxSessions;

@@ -40,14 +40,12 @@ const originUrl = httpUrl
 const email = z.email({ error: 'must be an email address' });
 
 /** "loopback" (the default off Render), "true", "false", a hop count, or addresses/subnets. */
-const trustProxy = z
-  .string()
-  .transform((value): boolean | number | string => {
-    if (value === 'true') return true;
-    if (value === 'false') return false;
-    if (/^\d+$/.test(value)) return Number(value);
-    return value;
-  });
+const trustProxy = z.string().transform((value): boolean | number | string => {
+  if (value === 'true') return true;
+  if (value === 'false') return false;
+  if (/^\d+$/.test(value)) return Number(value);
+  return value;
+});
 
 const EnvSchema = z
   .object({
@@ -292,7 +290,9 @@ export function configWarnings(config: Config): string[] {
     warnings.push(`EMAIL_MODE=${config.email.mode} but SMTP_HOST is not set: emails will fail.`);
   }
   if (config.email.mode === 'live' && !config.email.tracyEmail) {
-    warnings.push('EMAIL_MODE=live but TRACY_EMAIL is not set: the Email Tracy form cannot be sent.');
+    warnings.push(
+      'EMAIL_MODE=live but TRACY_EMAIL is not set: the Email Tracy form cannot be sent.',
+    );
   }
   return warnings;
 }

@@ -67,7 +67,9 @@ export class MemoryStore implements LeadStore {
 
   listLeads(range?: DateRange): Promise<Lead[]> {
     return this.run('listLeads', () =>
-      this.leads.filter((lead) => inRange(lead.createdAt, range)).map((lead) => structuredClone(lead)),
+      this.leads
+        .filter((lead) => inRange(lead.createdAt, range))
+        .map((lead) => structuredClone(lead)),
     );
   }
 
@@ -79,7 +81,9 @@ export class MemoryStore implements LeadStore {
 
   listEvents(range?: DateRange): Promise<EventRecord[]> {
     return this.run('listEvents', () =>
-      this.events.filter((event) => inRange(event.at, range)).map((event) => structuredClone(event)),
+      this.events
+        .filter((event) => inRange(event.at, range))
+        .map((event) => structuredClone(event)),
     );
   }
 

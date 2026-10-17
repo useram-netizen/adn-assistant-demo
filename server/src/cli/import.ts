@@ -40,7 +40,11 @@ async function main(argv: readonly string[]): Promise<number> {
     process.stdout.write(formatImportReport(report));
     return 0;
   } catch (error) {
-    if (error instanceof MemberFileError || error instanceof ImportError || error instanceof OverridesError) {
+    if (
+      error instanceof MemberFileError ||
+      error instanceof ImportError ||
+      error instanceof OverridesError
+    ) {
       console.error(error.message);
       return 1;
     }

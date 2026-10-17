@@ -13,9 +13,7 @@ import { newSessionId } from './lib/session';
 export const DEFAULT_TYPING_DELAY_MS = 600;
 
 type LoadState =
-  | { status: 'loading' }
-  | { status: 'ready'; config: PublicConfig }
-  | { status: 'error' };
+  { status: 'loading' } | { status: 'ready'; config: PublicConfig } | { status: 'error' };
 
 interface AppProps {
   embed: EmbedContext;

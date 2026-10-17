@@ -129,7 +129,10 @@ export function createApi(fetchImpl: FetchLike = (input, init) => fetch(input, i
   let statesCache: Promise<StateOption[]> | null = null;
   const countiesCache = new Map<string, Promise<CountyOption[]>>();
   /** A failed load is not cached, so "Try again" really tries again. */
-  const cached = <T>(load: () => Promise<T>, store: (value: Promise<T> | null) => void): Promise<T> => {
+  const cached = <T>(
+    load: () => Promise<T>,
+    store: (value: Promise<T> | null) => void,
+  ): Promise<T> => {
     const promise = load();
     store(promise);
     promise.catch(() => store(null));
@@ -154,8 +157,12 @@ export function createApi(fetchImpl: FetchLike = (input, init) => fetch(input, i
       if (!list) {
         list = cached(
           async () =>
-            (await call<CountiesResponse>('GET', `/api/counties?state=${encodeURIComponent(state)}`))
-              .counties,
+            (
+              await call<CountiesResponse>(
+                'GET',
+                `/api/counties?state=${encodeURIComponent(state)}`,
+              )
+            ).counties,
           (value) => {
             if (value) countiesCache.set(state, value);
             else countiesCache.delete(state);
@@ -165,10 +172,13 @@ export function createApi(fetchImpl: FetchLike = (input, init) => fetch(input, i
       return list;
     },
     match: (request) => call('POST', '/api/match', request),
-    interpret: (request) => call('POST', '/api/ai/interpret', request, { timeoutMs: AI_TIMEOUT_MS }),
+    interpret: (request) =>
+      call('POST', '/api/ai/interpret', request, { timeoutMs: AI_TIMEOUT_MS }),
     county: (request) => call('POST', '/api/ai/county', request, { timeoutMs: AI_TIMEOUT_MS }),
-    situation: (request) => call('POST', '/api/ai/situation', request, { timeoutMs: AI_TIMEOUT_MS }),
-    recommend: (request) => call('POST', '/api/ai/recommend', request, { timeoutMs: AI_TIMEOUT_MS }),
+    situation: (request) =>
+      call('POST', '/api/ai/situation', request, { timeoutMs: AI_TIMEOUT_MS }),
+    recommend: (request) =>
+      call('POST', '/api/ai/recommend', request, { timeoutMs: AI_TIMEOUT_MS }),
     lead: (request) => call('POST', '/api/leads', request),
     tracy: (request) => call('POST', '/api/contact-tracy', request),
     async events(request, keepalive = false) {

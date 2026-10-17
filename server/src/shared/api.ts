@@ -261,8 +261,20 @@ export interface EventDataByType {
   answer: { step: string; value: string };
   branch: { branch: 'pro' | 'uk' | 'outside' };
   /** Recorded by the server only. */
-  ai_call: { kind: 'interpret' | 'county' | 'situation' | 'recommend'; ms: number; ok: boolean; tokens: number };
-  results_shown: { platinum: number; gold: number; silver: number; total: number; category: string; state: string };
+  ai_call: {
+    kind: 'interpret' | 'county' | 'situation' | 'recommend';
+    ms: number;
+    ok: boolean;
+    tokens: number;
+  };
+  results_shown: {
+    platinum: number;
+    gold: number;
+    silver: number;
+    total: number;
+    category: string;
+    state: string;
+  };
   no_match: { category: string; state: string; countyFips: string };
   pros_selected: { count: number };
   /** Recorded by the server only. */
@@ -271,7 +283,9 @@ export interface EventDataByType {
   tracy_form_submitted: { reason: 'no_match' | 'outside' };
   /** Recorded by the server only. */
   email_failed: { kind: string; attempts: number };
-  link_clicked: { link: 'join' | 'uk_site' | 'articles' | 'podcast' | 'booking' | 'privacy' | 'safety' };
+  link_clicked: {
+    link: 'join' | 'uk_site' | 'articles' | 'podcast' | 'booking' | 'privacy' | 'safety';
+  };
   safety_shown: { trigger: 'keyword' | 'ai' };
 }
 

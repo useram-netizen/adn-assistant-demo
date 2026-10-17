@@ -38,8 +38,7 @@ function LinkButton({
       rel="noopener noreferrer"
       onClick={onClick}
     >
-      <span>{label}</span>
-      <span className="adn-sr-only"> {copy.widget.opensInNewTab}</span>
+      <span>{label}</span> <span className="adn-sr-only">{copy.widget.opensInNewTab}</span>
       <ExternalIcon />
     </a>
   );
@@ -50,7 +49,9 @@ export function StepInput({ state, controller, links, labelledBy, ref }: StepInp
   const { step } = state;
   const choose = (id: string) => controller.choose(id);
   const linkButton = (name: LinkName, href: string | null, label: string) =>
-    href ? <LinkButton href={href} label={label} onClick={() => controller.trackLink(name)} /> : null;
+    href ? (
+      <LinkButton href={href} label={label} onClick={() => controller.trackLink(name)} />
+    ) : null;
 
   if (state.retry) {
     return (

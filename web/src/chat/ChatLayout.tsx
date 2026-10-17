@@ -15,6 +15,11 @@ interface ChatLayoutProps {
   scrollKey: unknown;
   /** Scroll to the bottom when `scrollKey` changes (false for long screens the caller scrolls itself). */
   pinToBottom?: boolean;
+  /**
+   * The conversation has nothing else to focus (the assistant is typing, or the step is answered in
+   * the text box), so keyboard users need to be able to focus it to scroll it.
+   */
+  focusableLog?: boolean;
   /** Report the height to embed.js. Off while loading, so the iframe doesn't shrink and grow again. */
   reportHeight: boolean;
   logRef?: RefObject<HTMLDivElement | null>;
@@ -28,6 +33,7 @@ export function ChatLayout({
   composer,
   scrollKey,
   pinToBottom = true,
+  focusableLog = false,
   reportHeight,
   logRef,
 }: ChatLayoutProps) {
@@ -60,7 +66,7 @@ export function ChatLayout({
           <p className="adn-subtitle">{copy.widget.headerSubtitle}</p>
         </div>
       </header>
-      <div className="adn-log" tabIndex={-1} ref={log}>
+      <div className="adn-log" tabIndex={focusableLog ? 0 : -1} ref={log}>
         <div className="adn-log-content" ref={logContentRef}>
           {children}
         </div>

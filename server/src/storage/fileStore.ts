@@ -133,7 +133,11 @@ export class FileStore implements LeadStore {
         await writeFile(temp, leads.map((lead) => `${JSON.stringify(lead)}\n`).join(''), 'utf8');
         await rename(temp, path);
       } catch (error) {
-        log.error('storage_write_failed', { store: this.kind, file: 'leads.jsonl', code: errorCode(error) });
+        log.error('storage_write_failed', {
+          store: this.kind,
+          file: 'leads.jsonl',
+          code: errorCode(error),
+        });
       }
     });
   }

@@ -4,7 +4,9 @@ import { testApp } from './helpers.js';
 
 describe('GET /api/health', () => {
   it('reports that the server is up', async () => {
-    const res = await request(await testApp()).get('/api/health').expect(200);
+    const res = await request(await testApp())
+      .get('/api/health')
+      .expect(200);
     const body = res.body as Record<string, unknown>;
     expect(Object.keys(body).sort()).toEqual([
       'ai',
@@ -51,14 +53,18 @@ describe('GET /api/config', () => {
       MONGODB_URI: 'mongodb://user:db-password@db.example.com/adn',
       TRACY_EMAIL: 'tracy@example.com',
     };
-    const res = await request(await testApp(secrets)).get('/api/config').expect(200);
+    const res = await request(await testApp(secrets))
+      .get('/api/config')
+      .expect(200);
     for (const value of Object.values(secrets)) expect(res.text).not.toContain(value);
   });
 });
 
 describe('API errors', () => {
   it('answers unknown routes with a JSON 404', async () => {
-    const res = await request(await testApp()).get('/api/nothing-here').expect(404);
+    const res = await request(await testApp())
+      .get('/api/nothing-here')
+      .expect(404);
     expect(res.body).toEqual({ error: 'not_found' });
   });
 

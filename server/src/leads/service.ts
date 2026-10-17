@@ -121,7 +121,10 @@ export function createLeadService(deps: LeadServiceDeps): LeadService {
     try {
       record();
     } catch (error) {
-      log.error('event_record_failed', { type, error: error instanceof Error ? error.name : 'unknown' });
+      log.error('event_record_failed', {
+        type,
+        error: error instanceof Error ? error.name : 'unknown',
+      });
     }
   }
 
@@ -189,7 +192,10 @@ export function createLeadService(deps: LeadServiceDeps): LeadService {
   async function submitLead(body: unknown): Promise<SubmitResult<LeadResponse>> {
     const parsed = schemas.lead.safeParse(body);
     if (!parsed.success) {
-      return { status: 400, body: { error: 'validation_failed', fields: invalidFields(parsed.error) } };
+      return {
+        status: 400,
+        body: { error: 'validation_failed', fields: invalidFields(parsed.error) },
+      };
     }
     const input = parsed.data;
     if (isHoneypotFilled(input.website)) {
@@ -248,7 +254,14 @@ export function createLeadService(deps: LeadServiceDeps): LeadService {
         ...clientConfirmationEmail(request, names, config.links),
       },
       ...(copyTo
-        ? [{ kind: 'copy' as const, to: copyTo, replyTo: input.email, ...leadCopyEmail(request, names) }]
+        ? [
+            {
+              kind: 'copy' as const,
+              to: copyTo,
+              replyTo: input.email,
+              ...leadCopyEmail(request, names),
+            },
+          ]
         : []),
     ];
 
@@ -270,7 +283,10 @@ export function createLeadService(deps: LeadServiceDeps): LeadService {
   async function submitTracy(body: unknown): Promise<SubmitResult<TracyResponse>> {
     const parsed = schemas.tracy.safeParse(body);
     if (!parsed.success) {
-      return { status: 400, body: { error: 'validation_failed', fields: invalidFields(parsed.error) } };
+      return {
+        status: 400,
+        body: { error: 'validation_failed', fields: invalidFields(parsed.error) },
+      };
     }
     const input = parsed.data;
     if (isHoneypotFilled(input.website)) {
@@ -299,7 +315,12 @@ export function createLeadService(deps: LeadServiceDeps): LeadService {
     const emails: Array<OutgoingEmail | null> = [
       cannotSend
         ? null
-        : { kind: 'tracy', to: tracyTo, replyTo: input.email, ...tracyEmail(request, input.reason) },
+        : {
+            kind: 'tracy',
+            to: tracyTo,
+            replyTo: input.email,
+            ...tracyEmail(request, input.reason),
+          },
       { kind: 'client_tracy', to: input.email, ...clientTracyEmail(request, config.links) },
     ];
 

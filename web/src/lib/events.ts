@@ -18,7 +18,7 @@ const BATCH_MS = 4_000;
 const MAX_BATCH = 50;
 
 export function createTracker(api: Pick<Api, 'events'>, sessionId: string, site: string): Tracker {
-  let queue: ClientEvent[] = [];
+  const queue: ClientEvent[] = [];
   let timer: ReturnType<typeof setTimeout> | null = null;
 
   const flush = (keepalive = false) => {
@@ -40,7 +40,7 @@ export function createTracker(api: Pick<Api, 'events'>, sessionId: string, site:
 
   return {
     track(type, data) {
-      queue.push({ type, data, at: new Date().toISOString() } as ClientEvent);
+      queue.push({ type, data, at: new Date().toISOString() });
       if (queue.length >= MAX_BATCH) flush();
       else timer ??= setTimeout(() => flush(), BATCH_MS);
     },

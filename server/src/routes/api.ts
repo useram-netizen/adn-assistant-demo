@@ -6,7 +6,9 @@ import type { Config } from '../config/env.js';
 import { apiNotFound } from '../middleware/errors.js';
 import { serverRoot } from '../paths.js';
 import type { PublicConfigResponse } from '../shared/api.js';
+import { adminRouter } from './admin.js';
 import { aiRouter } from './ai.js';
+import { eventsRouter } from './events.js';
 import { geoRouter } from './geo.js';
 import { leadsRouter } from './leads.js';
 import { matchRouter } from './match.js';
@@ -63,6 +65,8 @@ export function apiRouter(config: Config, deps: AppDeps): Router {
   router.use(matchRouter({ config, geo, directory, store, rateLimitEnabled }));
   router.use(aiRouter({ config, geo, events, client: ai, rateLimitEnabled }));
   router.use(leadsRouter({ config, geo, directory, store, events, mailer, rateLimitEnabled }));
+  router.use(eventsRouter({ config, store, rateLimitEnabled }));
+  router.use(adminRouter({ config, store, directory }));
 
   router.use(apiNotFound);
   return router;

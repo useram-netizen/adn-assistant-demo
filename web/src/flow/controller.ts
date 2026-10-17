@@ -1,12 +1,6 @@
 import type { InterpretResponse, InterpretStep, SituationResponse } from '@adn/api';
 import { copy, fill } from '@adn/copy';
-import {
-  hasSubtypes,
-  isCategoryKey,
-  isStageKey,
-  type CategoryKey,
-  type StageKey,
-} from '@adn/taxonomy';
+import { hasSubtypes, isCategoryKey, isStageKey, type CategoryKey } from '@adn/taxonomy';
 import { ApiError, type Api, type PublicConfig } from '../lib/api';
 import type { EmbedMode } from '../lib/embedContext';
 import type { Tracker } from '../lib/events';
@@ -178,7 +172,10 @@ export class ChatController {
     this.add('visitor', yes ? copy.fallback.yes : copy.fallback.no);
     this.set({ confirm: null });
     if (yes) this.applyChoice(confirm.step, confirm.optionId, confirm.label);
-    else void this.run((epoch) => this.botSays([copy.fallback.pickInstead], epoch).then(() => undefined));
+    else
+      void this.run((epoch) =>
+        this.botSays([copy.fallback.pickInstead], epoch).then(() => undefined),
+      );
   }
 
   /** What the visitor typed in the text box. */
@@ -199,7 +196,9 @@ export class ChatController {
     if (this.state.busy || this.state.step !== 'category_help') return;
     this.add('visitor', copy.steps.categoryHelp.seeAll);
     this.set({ recommendations: null });
-    void this.run((epoch) => this.botSays([copy.steps.categoryHelp.explain], epoch).then(() => undefined));
+    void this.run((epoch) =>
+      this.botSays([copy.steps.categoryHelp.explain], epoch).then(() => undefined),
+    );
   }
 
   showMore(): void {
@@ -305,7 +304,9 @@ export class ChatController {
     retry();
   }
 
-  trackLink(link: 'join' | 'uk_site' | 'articles' | 'podcast' | 'booking' | 'privacy' | 'safety'): void {
+  trackLink(
+    link: 'join' | 'uk_site' | 'articles' | 'podcast' | 'booking' | 'privacy' | 'safety',
+  ): void {
     this.deps.tracker.track('link_clicked', { link });
   }
 
@@ -338,7 +339,7 @@ export class ChatController {
         }
         break;
       case 'stage':
-        if (isStageKey(id)) this.go('situation', { stage: id as StageKey });
+        if (isStageKey(id)) this.go('situation', { stage: id });
         break;
       case 'situation':
         this.go('category');
@@ -350,7 +351,9 @@ export class ChatController {
         else if (id === 'not_sure') this.go('category_help');
         else if (id === 'see_all') {
           this.set({ recommendations: null });
-          void this.run((epoch) => this.botSays([copy.steps.categoryHelp.explain], epoch).then(() => undefined));
+          void this.run((epoch) =>
+            this.botSays([copy.steps.categoryHelp.explain], epoch).then(() => undefined),
+          );
         } else if (isCategoryKey(id)) this.chooseCategory(id);
         break;
       case 'subcategory':
@@ -411,7 +414,9 @@ export class ChatController {
           this.applyChoice(step, result.optionId, label);
           return;
         }
-        const ask = fill(copy.fallback.didYouMean, { label: this.confirmLabel(step, result.optionId, label) });
+        const ask = fill(copy.fallback.didYouMean, {
+          label: this.confirmLabel(step, result.optionId, label),
+        });
         if (!(await this.botSays([ask], epoch))) return;
         this.set({ confirm: { step, optionId: result.optionId, label } });
         return;
@@ -552,7 +557,11 @@ export class ChatController {
       case 'welcome':
         return [copy.steps.welcome.message];
       case 'pro_info':
-        return [this.deps.config.links.join ? copy.steps.proInfo.message : copy.steps.proInfo.messageNoLink];
+        return [
+          this.deps.config.links.join
+            ? copy.steps.proInfo.message
+            : copy.steps.proInfo.messageNoLink,
+        ];
       case 'location':
         return [copy.steps.location.message];
       case 'uk':
@@ -574,7 +583,9 @@ export class ChatController {
       case 'category_more':
         return [copy.steps.categoryMore.message];
       case 'category_help':
-        return [recommendations ? copy.steps.categoryHelp.recommended : copy.steps.categoryHelp.explain];
+        return [
+          recommendations ? copy.steps.categoryHelp.recommended : copy.steps.categoryHelp.explain,
+        ];
       case 'subcategory':
         return [copy.steps.subcategory.message];
       case 'results':
@@ -672,6 +683,7 @@ export class ChatController {
             category: answers.category,
             countyName: answers.countyName,
             stateName: answers.stateName,
+            outside: answers.tracyReason === 'outside',
           }),
         ),
         submitting: false,
@@ -783,7 +795,11 @@ export class ChatController {
 
   // ---------------------------------------------------------------- The contact form
 
-  private async sendForm(kind: 'pros' | 'tracy', values: ContactValues, epoch: number): Promise<void> {
+  private async sendForm(
+    kind: 'pros' | 'tracy',
+    values: ContactValues,
+    epoch: number,
+  ): Promise<void> {
     const s = this.state;
     const { answers } = s;
     const contact = {
@@ -823,7 +839,8 @@ export class ChatController {
           state: reason === 'no_match' ? answers.state : null,
           countyFips: reason === 'no_match' ? answers.countyFips : null,
           category: reason === 'no_match' ? answers.category : null,
-          subcategory: reason === 'no_match' && answers.subcategory !== 'any' ? answers.subcategory : null,
+          subcategory:
+            reason === 'no_match' && answers.subcategory !== 'any' ? answers.subcategory : null,
         });
         if (epoch !== this.epoch) return;
         this.finishForm({ kind, names: [], safety: response.safety });
@@ -831,7 +848,9 @@ export class ChatController {
     } catch (error) {
       if (epoch !== this.epoch || !this.state.form) return;
       const message =
-        error instanceof ApiError && error.rateLimited ? copy.widget.rateLimited : copy.form.submitError;
+        error instanceof ApiError && error.rateLimited
+          ? copy.widget.rateLimited
+          : copy.form.submitError;
       this.set({ form: { ...this.state.form, submitting: false, error: message } });
     }
   }
@@ -905,7 +924,9 @@ export class ChatController {
   private fail(epoch: number, retry: () => void, error?: unknown): void {
     if (epoch !== this.epoch) return;
     const message =
-      error instanceof ApiError && error.rateLimited ? copy.widget.rateLimited : copy.widget.requestError;
+      error instanceof ApiError && error.rateLimited
+        ? copy.widget.rateLimited
+        : copy.widget.requestError;
     this.set((s) => ({
       items: [...s.items, { id: this.nextId++, kind: 'bot', text: message }],
       step: null,

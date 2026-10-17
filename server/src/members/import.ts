@@ -269,8 +269,7 @@ function buildMember(
   const outsideUS = states.outsideUS.length > 0;
 
   // Rule 7: counties, matched in the member's states (all states when no state is given).
-  const searchStates =
-    states.codes.length > 0 ? states.codes : outsideUS ? [] : index.allStates;
+  const searchStates = states.codes.length > 0 ? states.codes : outsideUS ? [] : index.allStates;
   const pieces = unique(
     rows.flatMap((row) => splitValues(row.counties)),
     (piece) => piece.replace(/\s+/g, ' ').toLowerCase(),
@@ -281,10 +280,13 @@ function buildMember(
     const match = matchCountyPiece(index, piece, searchStates);
     if (!match) {
       findings.unmatchedPieces.push({ member: label, piece });
-      warn(`${label}: "${piece}" matches no county in ${describeStates(searchStates, index)}; dropped`);
+      warn(
+        `${label}: "${piece}" matches no county in ${describeStates(searchStates, index)}; dropped`,
+      );
       continue;
     }
-    if (match.stripped) findings.strippedPieces.push({ member: label, before: piece, after: match.text });
+    if (match.stripped)
+      findings.strippedPieces.push({ member: label, before: piece, after: match.text });
     counties.push(...match.counties);
     statesPerPiece.push(new Set(match.counties.map((county) => county.state)));
   }
@@ -321,7 +323,8 @@ function buildMember(
 
   const reasons: NotSearchableReason[] = [];
   if (!tier) reasons.push('no_tier');
-  if (!professions.hasProfession) reasons.push(professions.supporter ? 'supporter_only' : 'no_profession');
+  if (!professions.hasProfession)
+    reasons.push(professions.supporter ? 'supporter_only' : 'no_profession');
   if (stateCodes.length === 0) reasons.push(outsideUS ? 'outside_us' : 'no_us_state');
   if (!hasEmail) reasons.push('no_email');
   // Counties only matter once there is a tier below Platinum and a state to have them in.

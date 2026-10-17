@@ -92,7 +92,7 @@ export const copy = {
         'Welcome! The Amicable Divorce Network connects people going through a divorce with professionals who are committed to amicable divorce. You can find out about membership and how to join here.',
       /** Used while JOIN_URL is not set (no button to point to). */
       messageNoLink:
-        'Welcome! The Amicable Divorce Network connects people going through a divorce with professionals who are committed to amicable divorce. Membership details are coming soon.',
+        'Welcome! The Amicable Divorce Network connects people going through a divorce with professionals who are committed to amicable divorce. Thank you for your interest in joining us.',
       joinButton: 'Learn about joining',
     },
     location: {
@@ -270,7 +270,8 @@ export const copy = {
     therapist: 'Helps you, your children or your family with the emotional side.',
     real_estate: 'Helps you sell, buy or refinance a home during or after a divorce.',
     arbitrator: 'A neutral decision-maker who settles disagreements outside court.',
-    parenting_coordinator: 'Helps separated parents follow their parenting plan and settle disputes.',
+    parenting_coordinator:
+      'Helps separated parents follow their parenting plan and settle disputes.',
     estate_attorney: 'Updates your will, trusts and beneficiaries after a divorce.',
     qdro_attorney: 'Prepares the court orders that divide retirement accounts.',
     bankruptcy_attorney: 'Advises on debt and bankruptcy during or after a divorce.',
@@ -401,6 +402,8 @@ export const copy = {
       post_divorce: 'My divorce is final and I need help with what comes after.',
     },
     prefillLookingFor: "I'm looking for {categoryWithArticle} in {county}, {state}.",
+    /** For a visitor outside the US and UK, who has said nothing else. */
+    prefillOutside: "I'm not in the US or UK, and I'd like some help.",
   },
 
   /** Site keys (data-site) as shown in emails ("…the assistant on {site}"). */

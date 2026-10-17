@@ -99,7 +99,11 @@ function previewMailer(config: Config, overrides: MailerOverrides): Mailer {
       // The files hold visitors' details: readable by this user only.
       await mkdir(dir, { recursive: true, mode: 0o700 });
       const file = join(dir, previewFileName(now(), email.kind, randomId()));
-      await writeFile(file, previewHtml(email, from), { encoding: 'utf8', mode: 0o600, flag: 'wx' });
+      await writeFile(file, previewHtml(email, from), {
+        encoding: 'utf8',
+        mode: 0o600,
+        flag: 'wx',
+      });
       return { status: 'previewed', file };
     },
   };
@@ -187,7 +191,10 @@ function smtpMailer(config: Config, overrides: MailerOverrides): Mailer {
     mode,
     async send(email: OutgoingEmail): Promise<SendResult> {
       if (!from) {
-        throw new MailerError('email_from_unset', 'Set EMAIL_FROM (or an SMTP_USER that is an email address)');
+        throw new MailerError(
+          'email_from_unset',
+          'Set EMAIL_FROM (or an SMTP_USER that is an email address)',
+        );
       }
       const { to, subject } = addressing(email);
       if (!to || !emailAddress.safeParse(to).success) {

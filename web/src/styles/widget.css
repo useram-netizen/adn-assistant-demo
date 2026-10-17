@@ -356,6 +356,11 @@ body {
   opacity: 0.6;
 }
 
+/* display:flex would otherwise win over the hidden attribute (the form is showing). */
+.adn-text-row[hidden] {
+  display: none;
+}
+
 .adn-text-row {
   display: flex;
   align-items: flex-end;
@@ -471,7 +476,6 @@ body {
     transition: none;
   }
 }
-
 
 /* ---------------------------------------------------------------- Conversation parts */
 

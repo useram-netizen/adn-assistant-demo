@@ -50,8 +50,8 @@ function Card({
         disabled={!selected && limitReached}
         onClick={onToggle}
       >
-        {selected ? copy.steps.results.selected : copy.steps.results.select}
-        <span className="adn-sr-only"> {card.name}</span>
+        {selected ? copy.steps.results.selected : copy.steps.results.select}{' '}
+        <span className="adn-sr-only">{card.name}</span>
       </button>
     </li>
   );

@@ -57,7 +57,11 @@ export function matchRouter({
     .superRefine((value, ctx) => {
       const county = geo.county(value.countyFips);
       if (!county || county.state !== value.state) {
-        ctx.addIssue({ code: 'custom', path: ['countyFips'], message: 'not a county of the state' });
+        ctx.addIssue({
+          code: 'custom',
+          path: ['countyFips'],
+          message: 'not a county of the state',
+        });
       }
       const { subcategory } = value;
       if (subcategory && subcategory !== ANY_SUBTYPE && !isSubtypeOf(value.category, subcategory)) {
@@ -69,9 +73,10 @@ export function matchRouter({
     const parsed = body.safeParse(req.body);
     if (!parsed.success) return sendValidationError(res, parsed.error);
     const { sessionId, site, state, countyFips, category } = parsed.data;
-    const subcategory = parsed.data.subcategory && parsed.data.subcategory !== ANY_SUBTYPE
-      ? parsed.data.subcategory
-      : null;
+    const subcategory =
+      parsed.data.subcategory && parsed.data.subcategory !== ANY_SUBTYPE
+        ? parsed.data.subcategory
+        : null;
 
     const input: MatchInput = { state, countyFips, category, subcategory };
     const matched = directory.match(input, sessionId);

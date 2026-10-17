@@ -1,6 +1,11 @@
 import { z } from 'zod';
 import { copy } from '../config/copy.js';
-import { CATEGORY_KEYS, isCategoryKey, type CategoryKey, type StageKey } from '../config/taxonomy.js';
+import {
+  CATEGORY_KEYS,
+  isCategoryKey,
+  type CategoryKey,
+  type StageKey,
+} from '../config/taxonomy.js';
 import type { County, StateInfo } from '../domain/types.js';
 import { log } from '../lib/log.js';
 import type { AiCallKind, AiClient, AiErrorCode, JsonSchema, StructuredRequest } from './client.js';

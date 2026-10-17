@@ -13,7 +13,9 @@ describe('GET /widget', () => {
   it.each(['/widget', '/widget/', '/widget?site=divorceamicably&mode=inline'])(
     'serves the widget page at %s',
     async (path) => {
-      const res = await request(await testApp()).get(path).expect(200);
+      const res = await request(await testApp())
+        .get(path)
+        .expect(200);
       expect(res.headers['content-type']).toMatch(/^text\/html/);
       expect(res.text).toContain('widget fixture');
       expect(res.headers['cache-control']).toBe('no-cache');
@@ -21,14 +23,18 @@ describe('GET /widget', () => {
   );
 
   it('lets the allowed sites frame it (CSP frame-ancestors, no X-Frame-Options)', async () => {
-    const res = await request(await testApp()).get('/widget').expect(200);
+    const res = await request(await testApp())
+      .get('/widget')
+      .expect(200);
     expect(res.headers['content-security-policy']).toContain(DEFAULT_ANCESTORS);
     expect(res.headers['x-frame-options']).toBeUndefined();
     expect(res.headers['cross-origin-resource-policy']).toBe('cross-origin');
   });
 
   it('uses ALLOWED_EMBED_ORIGINS', async () => {
-    const app = await testApp({ ALLOWED_EMBED_ORIGINS: 'https://tracy-test.example http://127.0.0.1:*' });
+    const app = await testApp({
+      ALLOWED_EMBED_ORIGINS: 'https://tracy-test.example http://127.0.0.1:*',
+    });
     const res = await request(app).get('/widget').expect(200);
     expect(res.headers['content-security-policy']).toContain(
       "frame-ancestors 'self' https://tracy-test.example http://127.0.0.1:*",
@@ -54,14 +60,18 @@ describe('GET /widget', () => {
   });
 
   it('serves hashed assets with a long cache and no X-Frame-Options', async () => {
-    const res = await request(await testApp()).get('/widget/assets/index-abc123.js').expect(200);
+    const res = await request(await testApp())
+      .get('/widget/assets/index-abc123.js')
+      .expect(200);
     expect(res.text).toContain('widget fixture');
     expect(res.headers['cache-control']).toBe('public, max-age=31536000, immutable');
     expect(res.headers['x-frame-options']).toBeUndefined();
   });
 
   it('does not cache other files for long', async () => {
-    const res = await request(await testApp()).get('/widget/manifest.json').expect(200);
+    const res = await request(await testApp())
+      .get('/widget/manifest.json')
+      .expect(200);
     expect(res.headers['cache-control']).toBe('no-cache');
   });
 
@@ -93,7 +103,9 @@ describe('HTTPS headers', () => {
   });
 
   it('leaves them out on http (local development)', async () => {
-    const res = await request(await testApp({ PUBLIC_BASE_URL: 'http://localhost:3000' })).get('/widget');
+    const res = await request(await testApp({ PUBLIC_BASE_URL: 'http://localhost:3000' })).get(
+      '/widget',
+    );
     expect(res.headers['strict-transport-security']).toBeUndefined();
     expect(res.headers['content-security-policy']).not.toContain('upgrade-insecure-requests');
   });

@@ -107,6 +107,9 @@ export function Conversation({ embed, config, controller }: ConversationProps) {
       reportHeight={state.items.length > 0}
       scrollKey={`${state.items.length}|${state.step ?? ''}|${state.busy}|${state.confirm ? 1 : 0}|${state.retry ? 1 : 0}`}
       pinToBottom={!scrollToQuestion}
+      focusableLog={
+        state.busy || state.step === 'county_help' || (state.step === null && !state.retry)
+      }
       logRef={logRef}
       composer={
         <Composer

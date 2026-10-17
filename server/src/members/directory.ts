@@ -58,7 +58,10 @@ export async function createMemberDirectory({
   } catch (error) {
     // Never print the file's content: an import error names a column or a line, not a person.
     log.error('members_load_failed', { error: error instanceof Error ? error.message : 'unknown' });
-    current = snapshotOf([], emptyImportReport(config.paths.membersFile, ['Could not load members']));
+    current = snapshotOf(
+      [],
+      emptyImportReport(config.paths.membersFile, ['Could not load members']),
+    );
   }
 
   return {

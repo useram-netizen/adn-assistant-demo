@@ -30,7 +30,7 @@ const CADP_KEY = normalizeLabel(CADP_LABEL);
 const SUPPORTER_KEY = normalizeLabel(SUPPORTER_LABEL);
 const UMBRELLA_KEYS = new Set<string>(IGNORED_LABELS.map(normalizeLabel));
 const PARENTS = (Object.keys(PARENT_PREFIXES) as Array<keyof typeof PARENT_PREFIXES>).map(
-  (label) => ({ prefix: `${normalizeLabel(label)}-`, label: label as SheetLabel }),
+  (label) => ({ prefix: `${normalizeLabel(label)}-`, label: label }),
 );
 
 export type LabelKind =

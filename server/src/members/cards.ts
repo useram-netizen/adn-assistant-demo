@@ -79,7 +79,9 @@ export function serviceArea(
     .map((county) => geo.shortCountyName(county))
     .join(', ');
   const more = ordered.length - CARD_COUNTY_LIMIT;
-  return more > 0 ? fill(copy.cards.servesMore, { list, n: more }) : fill(copy.cards.serves, { list });
+  return more > 0
+    ? fill(copy.cards.servesMore, { list, n: more })
+    : fill(copy.cards.serves, { list });
 }
 
 /** Platinum or Gold (Silver gets no tier badge), then CADP and Founding Member. */

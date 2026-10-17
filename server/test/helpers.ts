@@ -33,7 +33,7 @@ export async function testDeps(overrides: Partial<AppDeps> = {}): Promise<TestDe
     recorded: [] as EventRecord[],
     record(event: { sessionId: string; site: string; type: never; data: never }) {
       const at = new Date().toISOString();
-      this.recorded.push({ ...event, at, receivedAt: at, source: 'server' } as EventRecord);
+      this.recorded.push({ ...event, at, receivedAt: at, source: 'server' });
     },
   } as TestDeps['events'];
   const mailer = {

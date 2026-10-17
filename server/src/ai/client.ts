@@ -162,7 +162,14 @@ class OpenAiClient implements AiClient {
         return this.fail(request.kind, failure, { started, attempts, tokens });
       }
       const ms = this.now() - started;
-      log.info('ai_call', { kind: request.kind, model: this.model, ok: true, ms, tokens, attempts });
+      log.info('ai_call', {
+        kind: request.kind,
+        model: this.model,
+        ok: true,
+        ms,
+        tokens,
+        attempts,
+      });
       return { ok: true, data: output.data, ms, tokens };
     }
   }

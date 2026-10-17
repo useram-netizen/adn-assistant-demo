@@ -70,7 +70,9 @@ export function siteName(site: string): string {
 export function locationText(request: Pick<EmailRequest, 'countyName' | 'stateName'>) {
   const { countyName, stateName } = request;
   if (!stateName) return null;
-  return countyName ? fill(emails.values.location, { county: countyName, state: stateName }) : stateName;
+  return countyName
+    ? fill(emails.values.location, { county: countyName, state: stateName })
+    : stateName;
 }
 
 function subtypeLabel(category: CategoryKey, subtype: string | null): string | null {
@@ -105,7 +107,8 @@ function requestDetails(request: EmailRequest): Block {
       : { label: fields.phone, value: fields.notGiven },
     {
       label: fields.preferred,
-      value: contact.preferredContact === 'phone' ? copy.form.preferredPhone : copy.form.preferredEmail,
+      value:
+        contact.preferredContact === 'phone' ? copy.form.preferredPhone : copy.form.preferredEmail,
     },
   ];
   const location = locationText(request);
@@ -153,7 +156,10 @@ export function professionalEmail(request: ProEmailRequest): EmailContent {
 }
 
 /** LEAD_COPY_TO (OPEN): the professionals' email, plus who it went to. */
-export function leadCopyEmail(request: ProEmailRequest, contacted: readonly string[]): EmailContent {
+export function leadCopyEmail(
+  request: ProEmailRequest,
+  contacted: readonly string[],
+): EmailContent {
   const { subject, blocks } = professionalParts(request);
   return renderEmail(fill(emails.leadCopySubject, { subject }), [
     brand(emails.brand),

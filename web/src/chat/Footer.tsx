@@ -23,8 +23,7 @@ export function Footer({ privacyUrl }: { privacyUrl: string | null }) {
         <>
           <Separator />
           <a href={privacyUrl} target="_blank" rel="noopener noreferrer">
-            {copy.footer.privacy}
-            <span className="adn-sr-only"> {copy.widget.opensInNewTab}</span>
+            {copy.footer.privacy} <span className="adn-sr-only">{copy.widget.opensInNewTab}</span>
           </a>
         </>
       )}

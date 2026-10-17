@@ -1,6 +1,12 @@
 import { copy } from '@adn/copy';
 import { useId, useRef, useState, type FormEvent } from 'react';
-import { MESSAGE_MAX, NAME_MAX, validateContact, type ContactErrors, type ContactField } from '../flow/form';
+import {
+  MESSAGE_MAX,
+  NAME_MAX,
+  validateContact,
+  type ContactErrors,
+  type ContactField,
+} from '../flow/form';
 import type { ContactValues, FormState } from '../flow/types';
 
 interface ContactFormProps {
@@ -20,14 +26,27 @@ function FieldError({ id, message }: { id: string; message?: string }) {
   ) : null;
 }
 
-const FIELD_ORDER: ContactField[] = ['firstName', 'lastName', 'email', 'phone', 'message', 'consent'];
+const FIELD_ORDER: ContactField[] = [
+  'firstName',
+  'lastName',
+  'email',
+  'phone',
+  'message',
+  'consent',
+];
 
 /**
  * The contact form (spec: "Contact form"), for the professionals the visitor picked or for
  * Tracy. It checks the same things as the server, with friendly messages, and shows
  * the problems next to the fields. The hidden "trap" field is for bots.
  */
-export function ContactForm({ form, privacyUrl, onDraft, onSubmit, onPrivacyClick }: ContactFormProps) {
+export function ContactForm({
+  form,
+  privacyUrl,
+  onDraft,
+  onSubmit,
+  onPrivacyClick,
+}: ContactFormProps) {
   const base = useId();
   const [values, setValues] = useState<ContactValues>(form.values);
   const [errors, setErrors] = useState<ContactErrors>({});
@@ -192,9 +211,14 @@ export function ContactForm({ form, privacyUrl, onDraft, onSubmit, onPrivacyClic
             {privacyUrl && (
               <>
                 {' '}
-                <a href={privacyUrl} target="_blank" rel="noopener noreferrer" onClick={onPrivacyClick}>
-                  {copy.form.privacyLink}
-                  <span className="adn-sr-only"> {copy.widget.opensInNewTab}</span>
+                <a
+                  href={privacyUrl}
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  onClick={onPrivacyClick}
+                >
+                  {copy.form.privacyLink}{' '}
+                  <span className="adn-sr-only">{copy.widget.opensInNewTab}</span>
                 </a>
               </>
             )}
@@ -236,4 +260,3 @@ export function ContactForm({ form, privacyUrl, onDraft, onSubmit, onPrivacyClic
     </form>
   );
 }
-

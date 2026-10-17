@@ -4,8 +4,7 @@ import type { ReactNode } from 'react';
 export function BotMessage({ id, children }: { id?: string; children: ReactNode }) {
   return (
     <div className="adn-msg adn-msg--bot" id={id}>
-      <span className="adn-sr-only">{copy.widget.assistantSaid} </span>
-      {children}
+      <span className="adn-sr-only">{copy.widget.assistantSaid}</span> {children}
     </div>
   );
 }
@@ -14,8 +13,7 @@ export function BotMessage({ id, children }: { id?: string; children: ReactNode 
 export function VisitorMessage({ children }: { children: ReactNode }) {
   return (
     <div className="adn-msg adn-msg--visitor" aria-live="off">
-      <span className="adn-sr-only">{copy.widget.youSaid} </span>
-      {children}
+      <span className="adn-sr-only">{copy.widget.youSaid}</span> {children}
     </div>
   );
 }

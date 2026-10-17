@@ -27,6 +27,8 @@ export interface PrefillInput {
   category: CategoryKey | null;
   countyName: string | null;
   stateName: string | null;
+  /** The visitor is outside the US and UK (writing to Tracy). */
+  outside?: boolean;
 }
 
 /**
@@ -35,8 +37,7 @@ export interface PrefillInput {
  * nothing, what they are looking for.
  */
 export function prefillMessage(input: PrefillInput): string {
-  const summary =
-    input.analysis?.source === 'ai' ? input.analysis.summary.trim() : '';
+  const summary = input.analysis?.source === 'ai' ? input.analysis.summary.trim() : '';
   let message = summary;
   if (!message) {
     const parts = [
@@ -52,6 +53,7 @@ export function prefillMessage(input: PrefillInput): string {
       state: input.stateName,
     });
   }
+  if (!message && input.outside) message = copy.form.prefillOutside;
   return message.slice(0, MESSAGE_MAX);
 }
 

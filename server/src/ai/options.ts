@@ -60,7 +60,15 @@ export interface StepContext {
  * State codes that are also everyday words or names ("ok", "hi", "LA" for Los Angeles). Typed on
  * their own they go to the AI, which asks "Did you mean…?", instead of being taken as the state.
  */
-const AMBIGUOUS_STATE_CODES: ReadonlySet<string> = new Set(['HI', 'IN', 'LA', 'ME', 'OH', 'OK', 'OR']);
+const AMBIGUOUS_STATE_CODES: ReadonlySet<string> = new Set([
+  'HI',
+  'IN',
+  'LA',
+  'ME',
+  'OH',
+  'OK',
+  'OR',
+]);
 
 /** County-type words at the end of a name: "Cobb County" also matches "Cobb". */
 const COUNTY_SUFFIX = / (?:County|Parish|City and Borough|Borough|Census Area|Municipality|city)$/i;
@@ -96,11 +104,13 @@ function buildStepSpec(geo: Geo, step: InterpretStep, context: StepContext): Ste
         step,
         question: steps.location.message,
         options: [
-          ...geo.states().map((state) =>
-            AMBIGUOUS_STATE_CODES.has(state.code)
-              ? { id: state.code, label: state.name, keys: [matchKey(state.name)] }
-              : option(state.code, state.name),
-          ),
+          ...geo
+            .states()
+            .map((state) =>
+              AMBIGUOUS_STATE_CODES.has(state.code)
+                ? { id: state.code, label: state.name, keys: [matchKey(state.name)] }
+                : option(state.code, state.name),
+            ),
           option('uk', steps.location.optionUk),
           option('outside', steps.location.optionOutside),
         ],
@@ -163,7 +173,9 @@ function buildStepSpec(geo: Geo, step: InterpretStep, context: StepContext): Ste
  * Builds step specs, cached: the options only depend on the step, the state and the category,
  * which the router has validated (51 states, 4 categories with subtypes).
  */
-export function createStepSpecs(geo: Geo): (step: InterpretStep, context?: StepContext) => StepSpec {
+export function createStepSpecs(
+  geo: Geo,
+): (step: InterpretStep, context?: StepContext) => StepSpec {
   const cache = new Map<string, StepSpec>();
   return (step, context = {}) => {
     const cacheKey = `${step}|${context.state ?? ''}|${context.category ?? ''}`;

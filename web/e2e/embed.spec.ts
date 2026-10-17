@@ -170,6 +170,41 @@ test.describe('bubble embed', () => {
     await expect(panel).toBeHidden();
     await expect(bubble).toBeFocused();
   });
+
+  test('Escape in the state dropdown closes only the list, not the panel', async ({ page }) => {
+    await page.getByRole('button', { name: copy.embed.bubbleLabel }).click();
+    const panel = page.getByRole('dialog', { name: copy.embed.frameTitle });
+    const widget = page.locator('#adn-panel iframe').contentFrame();
+    await widget.getByRole('button', { name: welcome.optionDivorce }).click();
+    await widget.getByRole('combobox', { name: 'Your state' }).click();
+    await expect(widget.getByRole('listbox')).toBeVisible();
+
+    await page.keyboard.press('Escape');
+    await expect(widget.getByRole('listbox')).toBeHidden();
+    await expect(panel).toBeVisible();
+
+    // With the list closed, Escape closes the panel as usual.
+    await page.keyboard.press('Escape');
+    await expect(panel).toBeHidden();
+  });
+
+  test('the form fits the panel, and the visitor can reach the send button', async ({ page }) => {
+    await page.getByRole('button', { name: copy.embed.bubbleLabel }).click();
+    const widget = page.locator('#adn-panel iframe').contentFrame();
+    await widget.getByRole('button', { name: welcome.optionDivorce }).click();
+    await widget.getByRole('combobox', { name: 'Your state' }).fill('georgia');
+    await widget.getByRole('option', { name: 'Georgia', exact: true }).click();
+    await widget.getByRole('combobox', { name: 'Your county' }).fill('cobb');
+    await widget.getByRole('option', { name: 'Cobb County', exact: true }).click();
+    await widget.getByRole('button', { name: copy.steps.stage.options.ready }).click();
+    await widget.getByRole('button', { name: copy.steps.situation.skip }).click();
+    await widget.getByRole('button', { name: 'Mediator' }).click();
+    await widget.locator('.adn-select').first().click();
+    await widget.getByRole('button', { name: 'Contact selected (1)' }).click();
+    const send = widget.getByRole('button', { name: copy.form.submit });
+    await send.scrollIntoViewIfNeeded();
+    await expect(send).toBeInViewport();
+  });
 });
 
 test('fallback iframe (if a page editor strips scripts) shows the assistant', async ({ page }) => {
