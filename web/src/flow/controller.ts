@@ -826,22 +826,8 @@ export class ChatController {
     }
     if (epoch !== this.epoch) return 'stale';
 
-    if (match.noMatch) {
-      this.deps.tracker.track('no_match', {
-        category: answers.category,
-        state: answers.state,
-        countyFips: answers.countyFips,
-      });
-      return 'none';
-    }
-    this.deps.tracker.track('results_shown', {
-      platinum: match.counts.platinum,
-      gold: match.counts.gold,
-      silver: match.counts.silver,
-      total: match.total,
-      category: answers.category,
-      state: answers.state,
-    });
+    // results_shown and no_match are recorded by the server, which makes the search.
+    if (match.noMatch) return 'none';
     this.set({
       results: { cards: match.results, counts: match.counts, shown: SHOW_MORE_STEP, selected: [] },
     });

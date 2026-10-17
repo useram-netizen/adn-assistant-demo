@@ -1,4 +1,5 @@
 import type { ErrorRequestHandler, RequestHandler } from 'express';
+import { copy } from '../config/copy.js';
 import { log, redact } from '../lib/log.js';
 
 /** Unknown /api routes get a JSON 404. */
@@ -7,7 +8,7 @@ export const apiNotFound: RequestHandler = (_req, res) => {
 };
 
 export const notFound: RequestHandler = (_req, res) => {
-  res.status(404).type('text/plain').send('Not found');
+  res.status(404).type('text/plain').send(copy.server.notFound);
 };
 
 interface HttpErrorLike {
@@ -65,6 +66,6 @@ export const errorHandler: ErrorRequestHandler = (err, req, res, _next) => {
     res
       .status(status)
       .type('text/plain')
-      .send(status >= 500 ? 'Something went wrong' : 'Bad request');
+      .send(status >= 500 ? copy.server.error : copy.server.badRequest);
   }
 };

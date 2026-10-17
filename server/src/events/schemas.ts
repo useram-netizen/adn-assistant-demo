@@ -1,49 +1,59 @@
 import { z } from 'zod';
-import { siteSchema } from '../routes/validate.js';
-import { sessionIdSchema } from '../routes/validate.js';
+import { CATEGORY_KEYS, STAGE_KEYS, SUBTYPES } from '../config/taxonomy.js';
+import { siteSchema, sessionIdSchema } from '../routes/validate.js';
+import { STEP_IDS } from '../shared/api.js';
 
 /**
- * The usage events the widget may send (spec: "Tracking"). Each type has an exact shape: only
- * option values, codes and counts, short and made of plain characters, so nothing a visitor
- * typed (a name, a sentence) can be stored by mistake. Extra keys are rejected.
+ * The usage events the widget may send (spec: "Tracking"). Each type has an exact shape and every
+ * value comes from a fixed list (screens, option ids, state codes, county codes), so nothing a
+ * visitor typed (a name, a sentence, a number) can be stored, and a made-up value is refused.
+ * Extra keys are rejected. results_shown and no_match are recorded by the server (see
+ * routes/match.ts), not accepted here.
  */
 
-/** An option value or code: letters, digits and a few separators. */
-const code = z
+/** The ids a button or a list can answer with (the widget's `answer` events). */
+const NAMED_ANSWERS: ReadonlySet<string> = new Set([
+  'divorce',
+  'professional',
+  'uk',
+  'outside',
+  'not_sure',
+  'yes',
+  'no',
+  'tracy',
+  'another',
+  'restart',
+  'skip',
+  'more',
+  'see_all',
+  'any',
+  ...STAGE_KEYS,
+  ...CATEGORY_KEYS,
+  ...Object.values(SUBTYPES).flat(),
+]);
+
+/** A state's USPS code, a county's five-digit code, or one of the named answers. */
+const answerValue = z
   .string()
-  .min(1)
-  .max(64)
-  .regex(/^[A-Za-z0-9_.:-]+$/);
-const count = z.number().int().min(0).max(1_000_000);
+  .max(40)
+  .refine((value) => NAMED_ANSWERS.has(value) || /^[A-Z]{2}$/.test(value) || /^\d{5}$/.test(value));
 
 const eventSchemas = [
   z.strictObject({
     type: z.literal('session_started'),
     data: z.strictObject({ mode: z.enum(['inline', 'bubble', 'standalone']) }),
   }),
-  z.strictObject({ type: z.literal('step_viewed'), data: z.strictObject({ step: code }) }),
+  z.strictObject({
+    type: z.literal('step_viewed'),
+    data: z.strictObject({ step: z.enum(STEP_IDS) }),
+  }),
   z.strictObject({
     type: z.literal('answer'),
-    data: z.strictObject({ step: code, value: code }),
+    data: z.strictObject({ step: z.enum(STEP_IDS), value: answerValue }),
   }),
   z.strictObject({
     type: z.literal('branch'),
     data: z.strictObject({ branch: z.enum(['pro', 'uk', 'outside']) }),
-  }),
-  z.strictObject({
-    type: z.literal('results_shown'),
-    data: z.strictObject({
-      platinum: count,
-      gold: count,
-      silver: count,
-      total: count,
-      category: code,
-      state: code,
-    }),
-  }),
-  z.strictObject({
-    type: z.literal('no_match'),
-    data: z.strictObject({ category: code, state: code, countyFips: code }),
   }),
   z.strictObject({
     type: z.literal('pros_selected'),
@@ -61,6 +71,9 @@ const eventSchemas = [
   }),
 ] as const;
 
+/** The widget sends at most this many events at a time (it flushes every few seconds). */
+export const MAX_EVENTS_PER_REQUEST = 50;
+
 const clientEvent = z
   .discriminatedUnion('type', eventSchemas)
   .and(z.object({ at: z.iso.datetime({ offset: true }) }));
@@ -68,7 +81,7 @@ const clientEvent = z
 export const eventsBody = z.strictObject({
   sessionId: sessionIdSchema,
   site: siteSchema,
-  events: z.array(clientEvent).min(1).max(50),
+  events: z.array(clientEvent).min(1).max(MAX_EVENTS_PER_REQUEST),
 });
 
 export type ValidEventsBody = z.output<typeof eventsBody>;

@@ -267,6 +267,7 @@ export interface EventDataByType {
     ok: boolean;
     tokens: number;
   };
+  /** Recorded by the server only (when a search is made). */
   results_shown: {
     platinum: number;
     gold: number;
@@ -275,6 +276,7 @@ export interface EventDataByType {
     category: string;
     state: string;
   };
+  /** Recorded by the server only (when a search finds nobody). */
   no_match: { category: string; state: string; countyFips: string };
   pros_selected: { count: number };
   /** Recorded by the server only. */
@@ -291,14 +293,40 @@ export interface EventDataByType {
 
 export type EventType = keyof EventDataByType;
 
-/** Event types the widget may send; the rest are recorded by the server. */
+/** Every screen of the conversation. The widget's steps and the events that name them agree. */
+export const STEP_IDS = [
+  'welcome',
+  'pro_info',
+  'location',
+  'uk',
+  'outside',
+  'county',
+  'county_help',
+  'county_confirm',
+  'stage',
+  'situation',
+  'category',
+  'category_more',
+  'category_help',
+  'subcategory',
+  'results',
+  'no_match',
+  'contact',
+  'tracy',
+  'done',
+] as const;
+
+export type StepId = (typeof STEP_IDS)[number];
+
+/**
+ * Event types the widget may send; the rest are recorded by the server (results_shown and
+ * no_match come from the search itself, so a visitor can't make them up).
+ */
 export const CLIENT_EVENT_TYPES = [
   'session_started',
   'step_viewed',
   'answer',
   'branch',
-  'results_shown',
-  'no_match',
   'pros_selected',
   'link_clicked',
   'safety_shown',

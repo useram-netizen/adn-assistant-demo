@@ -8,7 +8,7 @@ import {
   isSubtypeOf,
   type CategoryKey,
 } from '../config/taxonomy.js';
-import type { Geo, MatchInput, MemberDirectory, Store } from '../domain/types.js';
+import type { EventSink, Geo, MatchInput, MemberDirectory, Store } from '../domain/types.js';
 import { log } from '../lib/log.js';
 import { toCard } from '../members/cards.js';
 import { RATE_LIMITS, rateLimit } from '../security/rateLimit.js';
@@ -20,6 +20,7 @@ export interface MatchRouterDeps {
   geo: Geo;
   directory: MemberDirectory;
   store: Store;
+  events: EventSink;
   /** False only with RATE_LIMITS=off (end-to-end tests). */
   rateLimitEnabled: boolean;
 }
@@ -35,6 +36,7 @@ export function matchRouter({
   geo,
   directory,
   store,
+  events,
   rateLimitEnabled,
 }: MatchRouterDeps): Router {
   const router = Router();
@@ -84,6 +86,15 @@ export function matchRouter({
     for (const member of matched) if (member.tier) counts[member.tier] += 1;
 
     if (matched.length === 0) await saveGap(store, geo, site, input, category);
+    recordSearch(events, {
+      sessionId,
+      site,
+      state,
+      countyFips,
+      category,
+      counts,
+      total: matched.length,
+    });
 
     const response: MatchResponse = {
       results: matched.map((member) => toCard(member, input, geo, config.showProContact)),
@@ -117,5 +128,35 @@ async function saveGap(
   } catch (error) {
     // A gap that can't be saved must never stop the visitor reaching the no-match screen.
     log.error('gap_save_failed', { code: error instanceof Error ? error.name : 'unknown' });
+  }
+}
+
+/** Usage events for a search, from the real result (so they can't be made up from outside). */
+function recordSearch(
+  events: EventSink,
+  search: {
+    sessionId: string;
+    site: string;
+    state: string;
+    countyFips: string;
+    category: CategoryKey;
+    counts: MatchResponse['counts'];
+    total: number;
+  },
+): void {
+  try {
+    const { sessionId, site, state, countyFips, category, counts, total } = search;
+    if (total === 0) {
+      events.record({ sessionId, site, type: 'no_match', data: { category, state, countyFips } });
+    } else {
+      events.record({
+        sessionId,
+        site,
+        type: 'results_shown',
+        data: { ...counts, total, category, state },
+      });
+    }
+  } catch (error) {
+    log.error('event_record_failed', { error: error instanceof Error ? error.name : 'unknown' });
   }
 }

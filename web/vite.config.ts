@@ -33,7 +33,7 @@ export default defineConfig({
   build: {
     outDir: 'dist',
     emptyOutDir: true,
-    sourcemap: true,
+    sourcemap: false,
   },
   server: {
     // `npm run dev:widget` (http://localhost:5173/widget/) talks to the API on port 3000.

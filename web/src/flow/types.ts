@@ -4,30 +4,11 @@ import type {
   RecommendResponse,
   SituationResponse,
   StateOption,
+  StepId,
 } from '@adn/api';
 import type { CategoryKey, StageKey } from '@adn/taxonomy';
 
-/** Every screen of the conversation (spec: "The steps"), plus the two small confirmations. */
-export type StepId =
-  | 'welcome'
-  | 'pro_info'
-  | 'location'
-  | 'uk'
-  | 'outside'
-  | 'county'
-  | 'county_help'
-  | 'county_confirm'
-  | 'stage'
-  | 'situation'
-  | 'category'
-  | 'category_more'
-  | 'category_help'
-  | 'subcategory'
-  | 'results'
-  | 'no_match'
-  | 'contact'
-  | 'tracy'
-  | 'done';
+export type { StepId };
 
 /** One line of the transcript. The safety card has no text of its own (it is static wording). */
 export interface Item {

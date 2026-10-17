@@ -46,6 +46,13 @@ export const copy = {
     privacy: 'Privacy',
   },
 
+  /** What the server says on a page that is not the widget (a wrong address, or a fault). */
+  server: {
+    notFound: 'Not found',
+    error: 'Something went wrong',
+    badRequest: 'Bad request',
+  },
+
   /** Text that embed.js puts on the host page. */
   embed: {
     bubbleLabel: 'Find a professional',
@@ -445,8 +452,10 @@ export const copy = {
     client: {
       subject: 'Your request through the Amicable Divorce Network',
       greeting: 'Hi {firstName},',
+      /** Used when the first name has anything but letters in it (the form is open to anyone). */
+      greetingNoName: 'Hi there,',
       intro: 'Thank you for using the Amicable Divorce Network assistant. Your request went to:',
-      after: 'They will contact you directly. Here is a copy of your message:',
+      after: 'They will contact you directly.',
       whatsNext: "What's next",
       signoff: 'Warm wishes,\nThe Amicable Divorce Network',
     },
@@ -466,8 +475,9 @@ export const copy = {
     clientTracy: {
       subject: 'Your message to Tracy at the Amicable Divorce Network',
       greeting: 'Hi {firstName},',
+      greetingNoName: 'Hi there,',
       intro: 'Thank you for your message. Tracy will get back to you personally.',
-      after: 'Here is a copy of your message:',
+      after: 'Please check your spam folder if you do not hear from her in a few days.',
       signoff: 'Warm wishes,\nThe Amicable Divorce Network',
     },
     /** Subject of the optional copy to LEAD_COPY_TO. */

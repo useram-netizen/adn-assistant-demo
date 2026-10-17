@@ -4,6 +4,7 @@ import { z } from 'zod';
 import type { Config } from '../config/env.js';
 import type { DateRange, GapRecord, MemberDirectory, Store } from '../domain/types.js';
 import { sendValidationError } from './validate.js';
+import { FixedWindowCounter, clientIp } from '../security/rateLimit.js';
 
 export interface AdminRouterDeps {
   config: Config;
@@ -68,6 +69,8 @@ export function gapsCsv(gaps: readonly GapRecord[]): string {
  */
 export function adminRouter({ config, store, directory }: AdminRouterDeps): Router {
   const router = Router();
+  // Ten wrong tokens from one address in a quarter of an hour, and that address waits.
+  const wrongTokens = new FixedWindowCounter(15 * 60_000, 10);
 
   const guard: RequestHandler = (req, res, next) => {
     res.setHeader('Cache-Control', 'no-store');
@@ -76,9 +79,16 @@ export function adminRouter({ config, store, directory }: AdminRouterDeps): Rout
       res.status(404).json({ error: 'admin_disabled' });
       return;
     }
+    const who = clientIp(req, config.platform);
+    if (wrongTokens.blocked(who)) {
+      res.setHeader('Retry-After', '900');
+      res.status(429).json({ error: 'rate_limited' });
+      return;
+    }
     const header = req.headers.authorization ?? '';
     const given = /^Bearer (.+)$/i.exec(header)?.[1] ?? '';
     if (!given || !sameToken(given, expected)) {
+      wrongTokens.hit(who);
       res.setHeader('WWW-Authenticate', 'Bearer');
       res.status(401).json({ error: 'unauthorized' });
       return;

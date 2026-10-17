@@ -54,6 +54,35 @@ describe('GET /api/counties', () => {
   );
 });
 
+describe('usage events from a search', () => {
+  it('are recorded by the server from the real result: counts when found, the county when not', async () => {
+    const deps = await testDeps();
+    const app = await testApp({}, { deps });
+    await request(app).post('/api/match').send(search()).expect(200);
+    await request(app)
+      .post('/api/match')
+      .send(search({ state: 'WY', countyFips: '56039' }))
+      .expect(200);
+    expect(deps.events.recorded.map(({ type, data }) => ({ type, data }))).toEqual([
+      {
+        type: 'results_shown',
+        data: { platinum: 6, gold: 10, silver: 19, total: 35, category: 'attorney', state: 'GA' },
+      },
+      { type: 'no_match', data: { category: 'attorney', state: 'WY', countyFips: '56039' } },
+    ]);
+  });
+
+  it('are not recorded for a search that is refused', async () => {
+    const deps = await testDeps();
+    const app = await testApp({}, { deps });
+    await request(app)
+      .post('/api/match')
+      .send(search({ countyFips: '56039' }))
+      .expect(400);
+    expect(deps.events.recorded).toEqual([]);
+  });
+});
+
 describe('POST /api/match', () => {
   it('returns the matching professionals, Platinum first, with the counts', async () => {
     const res = await request(await testApp())

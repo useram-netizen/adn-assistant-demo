@@ -7,6 +7,8 @@ import request from 'supertest';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import type { Mailer, OutgoingEmail } from '../src/domain/types.js';
 import { createMailer, type MailTransport, type TransportMessage } from '../src/email/mailer.js';
+import { clientConfirmationEmail, clientTracyEmail } from '../src/email/templates.js';
+import { createLeadService, MAX_CONFIRMATIONS_PER_ADDRESS } from '../src/leads/service.js';
 import { leadsRouter } from '../src/routes/leads.js';
 import { MemoryStore } from '../src/storage/memoryStore.js';
 import { testApp, testConfig, testDeps, type TestDeps } from './helpers.js';
@@ -462,6 +464,202 @@ describe('emails that fail', () => {
   });
 });
 
+describe('a slow mail server', () => {
+  it('does not keep the visitor waiting: the answer comes once the lead is saved', async () => {
+    const deps = await testDeps();
+    let release: (value: { status: 'sent' }) => void = () => undefined;
+    const slow = new Promise<{ status: 'sent' }>((resolve) => {
+      release = resolve;
+    });
+    const mailer: Mailer = { mode: 'preview', send: () => slow };
+    const app = express();
+    app.use(express.json());
+    app.use(
+      '/api',
+      leadsRouter({
+        config: testConfig(),
+        geo: deps.geo,
+        directory: deps.directory,
+        store: deps.store,
+        events: deps.events,
+        mailer,
+        rateLimitEnabled: false,
+      }),
+    );
+    const [member] = fultonMembers(deps, 1);
+
+    const started = Date.now();
+    const res = await request(app)
+      .post('/api/leads')
+      .send(leadBody([member!.id]))
+      .expect(200);
+    expect(res.body).toMatchObject({ ok: true, contacted: [member!.name] });
+    expect(Date.now() - started).toBeLessThan(2_000);
+    // Saved, with the emails still on their way.
+    const [lead] = await deps.store.listLeads();
+    expect(lead?.recipients.map((recipient) => recipient.status)).toEqual(['pending', 'pending']);
+
+    release({ status: 'sent' });
+    await allSettled(deps, 2);
+    const [done] = await deps.store.listLeads();
+    expect(done?.recipients.map((recipient) => recipient.status)).toEqual(['sent', 'sent']);
+  });
+
+  it('can be waited for with the delivery that was passed in (graceful shutdown)', async () => {
+    const deps = await testDeps();
+    const { createDelivery } = await import('../src/leads/delivery.js');
+    let release: () => void = () => undefined;
+    const gate = new Promise<void>((resolve) => {
+      release = resolve;
+    });
+    const mailer: Mailer = {
+      mode: 'preview',
+      send: async () => {
+        await gate;
+        return { status: 'sent' as const };
+      },
+    };
+    const delivery = createDelivery({ mailer, store: deps.store, events: deps.events });
+    const service = createLeadService({
+      config: testConfig(),
+      geo: deps.geo,
+      directory: deps.directory,
+      store: deps.store,
+      events: deps.events,
+      mailer,
+      delivery,
+    });
+    const [member] = fultonMembers(deps, 1);
+    await service.submitLead(leadBody([member!.id]));
+    let idle = false;
+    void delivery.idle().then(() => {
+      idle = true;
+    });
+    await new Promise((resolve) => setTimeout(resolve, 20));
+    expect(idle).toBe(false);
+    release();
+    await delivery.idle();
+    expect(idle).toBe(true);
+  });
+});
+
+describe('the confirmation emails (the form is open to anyone)', () => {
+  const links = {};
+  const request_ = (firstName: string) => ({
+    site: 'divorceamicably',
+    contact: {
+      firstName,
+      lastName: 'Doe',
+      email: 'victim@example.org',
+      phone: null,
+      preferredContact: 'email' as const,
+    },
+    message: 'Please visit http://phishing.example and send your password.',
+    stateName: 'Georgia',
+    countyName: 'Fulton County',
+    category: 'attorney' as const,
+    subcategory: null,
+    stage: 'ready' as const,
+  });
+
+  it('repeat nothing the visitor typed except a plain first name', () => {
+    for (const make of [
+      () => clientConfirmationEmail(request_('Jane'), ['Pat Lee'], links),
+      () => clientTracyEmail(request_('Jane'), links),
+    ]) {
+      const { text, html } = make();
+      expect(text).toContain('Hi Jane,');
+      for (const output of [text, html]) {
+        expect(output).not.toContain('phishing.example');
+        expect(output).not.toContain('password');
+      }
+    }
+  });
+
+  it('say "Hi there," when the first name is anything but a name', () => {
+    for (const first of ['http://phishing.example', 'Jane (call 555-0100)', '', 'x'.repeat(41)]) {
+      expect(clientConfirmationEmail(request_(first), ['Pat Lee'], links).text, first).toContain(
+        'Hi there,',
+      );
+    }
+    for (const name of ['Mary-Ann', "D'Angelo", 'José', 'Dr. Lee', 'Anne Marie']) {
+      expect(clientConfirmationEmail(request_(name), ['Pat Lee'], links).text, name).toContain(
+        `Hi ${name},`,
+      );
+    }
+  });
+});
+
+describe('confirmations to one address', () => {
+  it(`stop after ${MAX_CONFIRMATIONS_PER_ADDRESS} a day; the professionals still get every request`, async () => {
+    const deps = await testDeps();
+    const service = createLeadService({
+      config: testConfig(),
+      geo: deps.geo,
+      directory: deps.directory,
+      store: deps.store,
+      events: deps.events,
+      mailer: deps.mailer,
+      limitsEnabled: true,
+    });
+    const [member] = fultonMembers(deps, 1);
+    for (let i = 0; i < MAX_CONFIRMATIONS_PER_ADDRESS + 2; i += 1) {
+      const result = await service.submitLead(
+        leadBody([member!.id], { email: 'Jane.Doe@example.org' }),
+      );
+      expect(result.status).toBe(200);
+    }
+    await service.idle();
+    const kinds = deps.mailer.sent.map((email) => email.kind);
+    expect(kinds.filter((kind) => kind === 'professional')).toHaveLength(
+      MAX_CONFIRMATIONS_PER_ADDRESS + 2,
+    );
+    expect(kinds.filter((kind) => kind === 'client')).toHaveLength(MAX_CONFIRMATIONS_PER_ADDRESS);
+    const leads = await deps.store.listLeads();
+    const lastLead = leads.at(-1);
+    expect(lastLead?.recipients.map((recipient) => recipient.kind)).toEqual(['professional']);
+
+    // The Tracy form shares the same count.
+    const tracy = await service.submitTracy({
+      ...visitor,
+      email: 'jane.doe@example.org',
+      sessionId: randomUUID(),
+      site: 'divorceamicably',
+      reason: 'outside',
+      state: null,
+      countyFips: null,
+      category: null,
+      subcategory: null,
+      stage: null,
+    });
+    expect(tracy.status).toBe(200);
+    await service.idle();
+    expect(deps.mailer.sent.some((email) => email.kind === 'client_tracy')).toBe(false);
+    expect(deps.mailer.sent.some((email) => email.kind === 'tracy')).toBe(true);
+  });
+
+  it('are not counted when limits are off (the browser tests send many from one address)', async () => {
+    const deps = await testDeps();
+    const service = createLeadService({
+      config: testConfig(),
+      geo: deps.geo,
+      directory: deps.directory,
+      store: deps.store,
+      events: deps.events,
+      mailer: deps.mailer,
+      limitsEnabled: false,
+    });
+    const [member] = fultonMembers(deps, 1);
+    for (let i = 0; i < MAX_CONFIRMATIONS_PER_ADDRESS + 2; i += 1) {
+      await service.submitLead(leadBody([member!.id]));
+    }
+    await service.idle();
+    expect(deps.mailer.sent.filter((email) => email.kind === 'client')).toHaveLength(
+      MAX_CONFIRMATIONS_PER_ADDRESS + 2,
+    );
+  });
+});
+
 describe('the mailer (spec rule 1: no real emails unless EMAIL_MODE=live)', () => {
   let dir: string | undefined;
   afterEach(async () => {
@@ -533,6 +731,7 @@ describe('the mailer (spec rule 1: no real emails unless EMAIL_MODE=live)', () =
       EMAIL_MODE: 'live',
       SMTP_HOST: 'smtp.example.com',
       EMAIL_FROM: 'ADN <hello@example.com>',
+      TRACY_EMAIL: 'tracy@example.com',
     });
     await createMailer(config, { createTransport: factory }).send(email);
     expect(sent[0]?.to).toBe('real.professional@example.com');
@@ -540,8 +739,11 @@ describe('the mailer (spec rule 1: no real emails unless EMAIL_MODE=live)', () =
   });
 
   it('refuses EMAIL_MODE=live outside production, and redirect without a redirect address', () => {
-    expect(() => testConfig({ EMAIL_MODE: 'live' })).toThrow(/production/);
-    expect(() => testConfig({ EMAIL_MODE: 'redirect' })).toThrow(/EMAIL_REDIRECT_TO/);
+    const sending = { SMTP_HOST: 'smtp.example.com', EMAIL_FROM: 'ADN <hello@example.com>' };
+    expect(() =>
+      testConfig({ ...sending, TRACY_EMAIL: 'tracy@example.com', EMAIL_MODE: 'live' }),
+    ).toThrow(/production/);
+    expect(() => testConfig({ ...sending, EMAIL_MODE: 'redirect' })).toThrow(/EMAIL_REDIRECT_TO/);
   });
 
   it('defaults to preview', () => {

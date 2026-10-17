@@ -16,7 +16,7 @@ export interface LeadsRouterDeps extends LeadServiceDeps {
  */
 export function leadsRouter(deps: LeadsRouterDeps): Router {
   const router = Router();
-  const service = createLeadService(deps);
+  const service = createLeadService({ ...deps, limitsEnabled: deps.rateLimitEnabled });
   const limiter = (name: 'leads' | 'tracy') =>
     rateLimit({
       name,

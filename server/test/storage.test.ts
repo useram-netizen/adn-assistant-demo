@@ -1,4 +1,4 @@
-import { chmod, mkdtemp, readFile, rm, writeFile } from 'node:fs/promises';
+import { chmod, mkdtemp, readFile, rm, stat, writeFile } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
@@ -164,11 +164,55 @@ describe('FileStore (used when MONGODB_URI is not set)', () => {
   });
 
   it('writes files only this user can read, if the system allows it', async () => {
-    const store = new FileStore(dir);
+    const store = new FileStore(join(dir, 'data'));
+    await store.init();
     await store.saveLead(lead('a'));
-    const text = await readFile(join(dir, 'leads.jsonl'), 'utf8');
+    await store.saveGap(gap());
+    await store.saveEvents([event('step_viewed')]);
+    const text = await readFile(join(dir, 'data', 'leads.jsonl'), 'utf8');
     expect(text.trim().split('\n')).toHaveLength(1);
-    await chmod(dir, 0o700);
+    if (process.platform !== 'win32') {
+      expect((await stat(join(dir, 'data'))).mode & 0o777).toBe(0o700);
+      for (const file of ['leads.jsonl', 'gaps.jsonl', 'events.jsonl']) {
+        expect((await stat(join(dir, 'data', file))).mode & 0o777, file).toBe(0o600);
+      }
+    }
+  });
+
+  it('makes a folder and files that were already there private too', async () => {
+    if (process.platform === 'win32') return;
+    await writeFile(join(dir, 'leads.jsonl'), '');
+    await chmod(join(dir, 'leads.jsonl'), 0o644);
+    await chmod(dir, 0o755);
+    await new FileStore(dir).init();
+    expect((await stat(dir)).mode & 0o777).toBe(0o700);
+    expect((await stat(join(dir, 'leads.jsonl'))).mode & 0o777).toBe(0o600);
+  });
+
+  it('stops adding to the events and gaps logs at their size limit, but never to the leads', async () => {
+    const warnings: string[] = [];
+    vi.spyOn(console, 'error').mockImplementation((line) => void warnings.push(String(line)));
+    const store = new FileStore(dir, { 'events.jsonl': 600, 'gaps.jsonl': 400 });
+    await store.init();
+    for (let i = 0; i < 20; i += 1) await store.saveEvents([event('step_viewed')]);
+    for (let i = 0; i < 20; i += 1) await store.saveGap(gap());
+    for (let i = 0; i < 20; i += 1) await store.saveLead(lead(`lead-${i}`));
+
+    expect((await stat(join(dir, 'events.jsonl'))).size).toBeLessThanOrEqual(600);
+    expect((await stat(join(dir, 'gaps.jsonl'))).size).toBeLessThanOrEqual(400);
+    expect((await store.listEvents()).length).toBeGreaterThan(0);
+    expect((await store.listEvents()).length).toBeLessThan(20);
+    expect(await store.listLeads()).toHaveLength(20);
+    // Said once, not once per dropped record.
+    const full = warnings.filter((line) => line.includes('storage_file_full'));
+    expect(full.length).toBe(2);
+
+    // A new process counts what is already in the file.
+    const again = new FileStore(dir, { 'events.jsonl': 600 });
+    await again.init();
+    const before = (await again.listEvents()).length;
+    await again.saveEvents([event('step_viewed')]);
+    expect((await again.listEvents()).length).toBe(before);
   });
 });
 

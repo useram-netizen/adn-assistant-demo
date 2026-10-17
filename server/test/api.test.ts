@@ -49,7 +49,7 @@ describe('GET /api/config', () => {
     const secrets = {
       OPENAI_API_KEY: 'sk-test-openai-key-123',
       SMTP_PASS: 'smtp-password-456',
-      ADMIN_TOKEN: 'admin-token-0123456789',
+      ADMIN_TOKEN: 'admin-token-0123456789-abcdef',
       MONGODB_URI: 'mongodb://user:db-password@db.example.com/adn',
       TRACY_EMAIL: 'tracy@example.com',
     };

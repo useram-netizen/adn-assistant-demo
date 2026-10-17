@@ -1,6 +1,7 @@
 import { readFile } from 'node:fs/promises';
 import { extname } from 'node:path';
 import { parse } from 'csv-parse/sync';
+import { log } from '../lib/log.js';
 import { readSheet, type SheetData } from 'read-excel-file/node';
 
 /** One row of the member list, keyed by the header names ("AND", "Contact Email", …). */
@@ -28,7 +29,16 @@ export const MEMBER_FILE_TYPES = ['.csv', '.xlsx'] as const;
  */
 export async function readMemberFile(path: string): Promise<MemberRow[]> {
   const type = extname(path).toLowerCase();
-  if (type === '.csv') return parseMemberCsv(await readBytes(path));
+  if (type === '.csv') {
+    const bytes = await readBytes(path);
+    if (decodeCsv(bytes).encoding !== 'utf-8') {
+      log.warn('members_file_encoding', {
+        encoding: 'windows-1252',
+        hint: 'Save the file as "CSV UTF-8" to be safe',
+      });
+    }
+    return parseMemberCsv(bytes);
+  }
   if (type === '.xlsx') return parseMemberXlsx(await readBytes(path));
   throw new MemberFileError(
     'unsupported_type',
@@ -36,12 +46,26 @@ export async function readMemberFile(path: string): Promise<MemberRow[]> {
   );
 }
 
-/** Parses CSV (UTF-8, with or without a byte order mark) into member rows. */
+/**
+ * The text of a CSV file. UTF-8 (with or without a byte order mark) is the norm; a file that is
+ * not valid UTF-8 is what Excel's plain "CSV" export makes (Windows-1252), so it is read that
+ * way instead of turning "Doña Ana" into "Do�a Ana". The result says which one it was.
+ */
+export function decodeCsv(content: Buffer): { text: string; encoding: 'utf-8' | 'windows-1252' } {
+  try {
+    return { text: new TextDecoder('utf-8', { fatal: true }).decode(content), encoding: 'utf-8' };
+  } catch {
+    return { text: new TextDecoder('windows-1252').decode(content), encoding: 'windows-1252' };
+  }
+}
+
+/** Parses CSV (UTF-8 or Windows-1252, with or without a byte order mark) into member rows. */
 export function parseMemberCsv(content: string | Buffer): MemberRow[] {
   let table: string[][];
   try {
+    const text = typeof content === 'string' ? content : decodeCsv(content).text;
     // Blank lines are kept, so they are counted (and skipped) as empty rows.
-    table = parse(content, { bom: true, relax_column_count: true, skip_empty_lines: false });
+    table = parse(text, { bom: true, relax_column_count: true, skip_empty_lines: false });
   } catch (error) {
     throw new MemberFileError('invalid', `The member file is not valid CSV: ${errorText(error)}`);
   }

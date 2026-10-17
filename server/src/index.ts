@@ -11,6 +11,7 @@ import { createMemberDirectory, startMemberReload } from './members/directory.js
 import { envFilePath } from './paths.js';
 import { rateLimitsEnabled } from './security/rateLimit.js';
 import { createStore } from './storage/index.js';
+import { createDelivery } from './leads/delivery.js';
 
 // Settings come from the repo's .env file; variables already set in the environment win.
 // Tests set everything themselves, so they never read .env.
@@ -68,18 +69,44 @@ async function start(): Promise<void> {
   }
 
   for (const warning of configWarnings(config)) log.warn('config_warning', { warning });
+  if (!rateLimitsEnabled() && config.nodeEnv === 'production') {
+    log.warn('config_warning', {
+      warning:
+        'RATE_LIMITS=off: nothing limits requests or AI use. It is for tests only; remove it.',
+    });
+  }
 
   const geo = createGeo(config.paths.countiesFile);
   const directory = await createMemberDirectory({ config, geo });
+  const searchable = directory.all().filter((member) => member.searchable && member.active);
+  if (searchable.length === 0) {
+    // A site where nobody can be found is worse than a deploy that does not start: the host keeps
+    // the previous version running. The line above (members_load_failed) says what is wrong.
+    log.error('members_unavailable', { file: config.paths.membersFile });
+    console.error(
+      `No searchable members could be loaded from ${config.paths.membersFile}: check the file and the message above.`,
+    );
+    process.exit(1);
+  }
   const store = createStore(config);
   await store.init();
   const events = createEventSink(store);
   const mailer = createMailer(config);
+  const delivery = createDelivery({ mailer, store, events });
   const ai = createAiClient(config);
 
   const app = createApp({
     config,
-    deps: { geo, directory, store, events, mailer, ai, rateLimitEnabled: rateLimitsEnabled() },
+    deps: {
+      geo,
+      directory,
+      store,
+      events,
+      mailer,
+      delivery,
+      ai,
+      rateLimitEnabled: rateLimitsEnabled(),
+    },
   });
   const stopReload = startMemberReload(directory);
   const stopRetention = startLeadRetention(store, config.leadRetentionDays);
@@ -118,6 +145,8 @@ async function start(): Promise<void> {
     setTimeout(() => process.exit(0), 10_000).unref();
     server.close(() => {
       void (async () => {
+        // Emails that are being sent finish first (the 10 second limit above still applies).
+        await delivery.idle().catch(() => undefined);
         await events.flush().catch(() => undefined);
         await store.close().catch(() => undefined);
         process.exit(0);

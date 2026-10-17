@@ -9,6 +9,7 @@ import { apiRouter } from './routes/api.js';
 import { embedRouter } from './routes/embed.js';
 import { widgetRouter } from './routes/widget.js';
 import { securityHeaders } from './security/headers.js';
+import type { Delivery } from './leads/delivery.js';
 
 /** The services the routes use. index.ts builds the real ones; tests pass fakes. */
 export interface AppDeps {
@@ -17,6 +18,8 @@ export interface AppDeps {
   store: Store;
   events: EventSink;
   mailer: Mailer;
+  /** Sends the lead emails. Optional: by default the leads routes make their own (see index.ts). */
+  delivery?: Delivery;
   /** null when the AI is off or there is no key: every AI route then falls back. */
   ai: AiClient | null;
   /** false only when RATE_LIMITS=off (end-to-end tests). */

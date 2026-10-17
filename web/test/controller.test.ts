@@ -6,7 +6,6 @@ import { ApiError } from '../src/lib/api';
 import {
   advanceTo,
   analysis,
-  cards,
   failure,
   harness,
   option,
@@ -252,10 +251,8 @@ describe('the branches', () => {
       'another',
       'restart',
     ]);
-    expect(h.events).toContainEqual({
-      type: 'no_match',
-      data: { category: 'attorney', state: 'WY', countyFips: '56039' },
-    });
+    // The server records the no-match (it made the search); the widget does not claim one.
+    expect(h.events.map((event) => event.type)).not.toContain('no_match');
 
     h.controller.choose('tracy');
     await h.settle();
@@ -1280,26 +1277,12 @@ describe('usage events', () => {
     await h.settle();
     const types = h.events.map((event) => event.type);
     expect(types).toEqual(
-      expect.arrayContaining([
-        'session_started',
-        'step_viewed',
-        'answer',
-        'results_shown',
-        'pros_selected',
-      ]),
+      expect.arrayContaining(['session_started', 'step_viewed', 'answer', 'pros_selected']),
     );
     expect(h.events).toContainEqual({ type: 'answer', data: { step: 'location', value: 'GA' } });
-    expect(h.events).toContainEqual({
-      type: 'results_shown',
-      data: {
-        platinum: 2,
-        gold: 2,
-        silver: 4,
-        total: cards.length,
-        category: 'attorney',
-        state: 'GA',
-      },
-    });
+    // What a search found is recorded by the server, which made the search.
+    expect(types).not.toContain('results_shown');
+    expect(types).not.toContain('no_match');
     const everything = JSON.stringify(h.events);
     expect(everything).not.toContain('husband');
     expect(everything).not.toContain('hits');

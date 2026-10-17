@@ -9,7 +9,6 @@ import {
   heading,
   linkList,
   paragraph,
-  quote,
   renderEmail,
   type Block,
   type DetailRow,
@@ -169,7 +168,23 @@ export function leadCopyEmail(
   ]);
 }
 
-/** The visitor's confirmation: who was contacted, their message and the what's next links. */
+/**
+ * "Hi Jane,": a first name with letters only. The form is open to anyone, so a name that carries
+ * a web address or other text is not printed in an email sent under our name.
+ */
+function greeting(
+  wording: { greeting: string; greetingNoName: string },
+  firstName: string,
+): string {
+  const plain = /^[\p{L}\p{M}][\p{L}\p{M}'’. -]{0,39}$/u.test(firstName.trim());
+  return plain ? fill(wording.greeting, { firstName: firstName.trim() }) : wording.greetingNoName;
+}
+
+/**
+ * The visitor's confirmation: who was contacted and the what's next links. It repeats nothing the
+ * visitor typed except their first name (anyone can type anything into the form, and this email
+ * goes to the address they give).
+ */
 export function clientConfirmationEmail(
   request: EmailRequest,
   contacted: readonly string[],
@@ -178,11 +193,10 @@ export function clientConfirmationEmail(
   const wording = emails.client;
   return renderEmail(wording.subject, [
     brand(emails.brand),
-    paragraph(fill(wording.greeting, { firstName: request.contact.firstName })),
+    paragraph(greeting(wording, request.contact.firstName)),
     paragraph(wording.intro),
     bulletList(contacted),
     paragraph(wording.after),
-    quote(request.message),
     ...whatsNext(links),
     paragraph(wording.signoff),
   ]);
@@ -224,10 +238,9 @@ export function clientTracyEmail(request: EmailRequest, links: WhatsNextLinks): 
   const wording = emails.clientTracy;
   return renderEmail(wording.subject, [
     brand(emails.brand),
-    paragraph(fill(wording.greeting, { firstName: request.contact.firstName })),
+    paragraph(greeting(wording, request.contact.firstName)),
     paragraph(wording.intro),
     paragraph(wording.after),
-    quote(request.message),
     ...whatsNext(links),
     paragraph(wording.signoff),
   ]);

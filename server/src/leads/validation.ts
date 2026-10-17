@@ -7,6 +7,7 @@ import {
   type CategoryKey,
 } from '../config/taxonomy.js';
 import type { Geo } from '../domain/types.js';
+import { siteSchema } from '../routes/validate.js';
 
 /**
  * Request bodies for POST /leads and POST /contact-tracy (LeadRequest and TracyRequest in
@@ -80,15 +81,8 @@ const contactShape = {
     .min(1)
     .max(100)
     .regex(/^[\w-]+$/),
-  /** The data-site key; unknown values are kept and shown as the generic site name. */
-  site: z
-    .string()
-    .trim()
-    .toLowerCase()
-    .max(100)
-    .refine((value) => !CONTROL_CHARACTER.test(value))
-    .optional()
-    .transform((value) => value ?? ''),
+  /** The data-site key: letters, digits and hyphens, or "unknown" (the same rule as every route). */
+  site: siteSchema,
   firstName: personName,
   lastName: personName,
   email: emailAddress,

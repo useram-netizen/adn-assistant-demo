@@ -17,7 +17,7 @@ const EMBED_TEST_PATH = /^\/embed-test\/?$/i;
  */
 export function securityHeaders(config: Config): RequestHandler {
   const https = config.publicBaseUrl.startsWith('https://');
-  const strictTransportSecurity = https ? { maxAge: 31_536_000, includeSubDomains: true } : false;
+  const strictTransportSecurity = https ? { maxAge: 31_536_000 } : false;
 
   const baseDirectives = {
     defaultSrc: ["'self'"],

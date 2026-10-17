@@ -37,7 +37,7 @@ export function publicConfig(config: Config): PublicConfigResponse {
 
 /** Everything under /api. Each module's router owns its own paths. */
 export function apiRouter(config: Config, deps: AppDeps): Router {
-  const { geo, directory, store, events, mailer, ai, rateLimitEnabled } = deps;
+  const { geo, directory, store, events, mailer, delivery, ai, rateLimitEnabled } = deps;
   const router = Router();
   router.use(express.json({ limit: '20kb' }));
   router.use((_req, res, next) => {
@@ -46,11 +46,14 @@ export function apiRouter(config: Config, deps: AppDeps): Router {
   });
 
   router.get('/health', (_req, res) => {
-    res.json({
-      ok: true,
+    const members = directory.all().filter((member) => member.searchable && member.active).length;
+    // With nobody to find, every search ends at the Email Tracy form: say so (a 503 fails the
+    // host's health check, which keeps the previous version running).
+    res.status(members > 0 ? 200 : 503).json({
+      ok: members > 0,
       version,
       uptimeSeconds: Math.round(process.uptime()),
-      members: directory.all().filter((member) => member.searchable && member.active).length,
+      members,
       storage: store.kind,
       ai: config.ai.available ? 'on' : 'off',
     });
@@ -62,9 +65,11 @@ export function apiRouter(config: Config, deps: AppDeps): Router {
   });
 
   router.use(geoRouter({ geo }));
-  router.use(matchRouter({ config, geo, directory, store, rateLimitEnabled }));
+  router.use(matchRouter({ config, geo, directory, store, events, rateLimitEnabled }));
   router.use(aiRouter({ config, geo, events, client: ai, rateLimitEnabled }));
-  router.use(leadsRouter({ config, geo, directory, store, events, mailer, rateLimitEnabled }));
+  router.use(
+    leadsRouter({ config, geo, directory, store, events, mailer, delivery, rateLimitEnabled }),
+  );
   router.use(eventsRouter({ config, store, rateLimitEnabled }));
   router.use(adminRouter({ config, store, directory }));
 

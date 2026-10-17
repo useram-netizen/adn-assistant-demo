@@ -8,6 +8,8 @@ import type { ApiError } from '../shared/api.js';
 /** The site key from data-site; anything else counts as "unknown" rather than failing the request. */
 export const siteSchema = z
   .string()
+  .trim()
+  .toLowerCase()
   .regex(/^[a-z0-9][a-z0-9-]{0,39}$/)
   .catch('unknown')
   .default('unknown');

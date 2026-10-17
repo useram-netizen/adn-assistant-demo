@@ -84,7 +84,7 @@ const EnvSchema = z
     LEAD_COPY_TO: email.optional(),
     TRACY_EMAIL: email.optional(),
 
-    ADMIN_TOKEN: z.string().min(16, { error: 'must be at least 16 characters' }).optional(),
+    ADMIN_TOKEN: z.string().min(24, { error: 'must be at least 24 characters' }).optional(),
 
     ALLOWED_EMBED_ORIGINS: z.string().default(DEFAULT_EMBED_ORIGINS),
 
@@ -112,6 +112,26 @@ const EnvSchema = z
         code: 'custom',
         path: ['EMAIL_REDIRECT_TO'],
         message: 'is required when EMAIL_MODE=redirect',
+      });
+    }
+    // A mode that sends needs somewhere to send from. Stopping at startup beats a form that
+    // tells visitors "sent" while every email fails.
+    if (env.EMAIL_MODE !== 'preview') {
+      for (const name of ['SMTP_HOST', 'EMAIL_FROM'] as const) {
+        if (!env[name]) {
+          ctx.addIssue({
+            code: 'custom',
+            path: [name],
+            message: `is required when EMAIL_MODE=${env.EMAIL_MODE}`,
+          });
+        }
+      }
+    }
+    if (env.EMAIL_MODE === 'live' && !env.TRACY_EMAIL) {
+      ctx.addIssue({
+        code: 'custom',
+        path: ['TRACY_EMAIL'],
+        message: 'is required when EMAIL_MODE=live (it is where the Email Tracy form goes)',
       });
     }
     const { invalid } = parseEmbedOrigins(env.ALLOWED_EMBED_ORIGINS);
@@ -286,13 +306,8 @@ export function configWarnings(config: Config): string[] {
       'AI_ENABLED is on but OPENAI_API_KEY is not set: typed answers fall back to buttons.',
     );
   }
-  if (config.email.mode !== 'preview' && !config.email.smtp.host) {
-    warnings.push(`EMAIL_MODE=${config.email.mode} but SMTP_HOST is not set: emails will fail.`);
-  }
-  if (config.email.mode === 'live' && !config.email.tracyEmail) {
-    warnings.push(
-      'EMAIL_MODE=live but TRACY_EMAIL is not set: the Email Tracy form cannot be sent.',
-    );
+  if (config.ai.storeTranscripts) {
+    warnings.push('STORE_TRANSCRIPTS=true has no effect: what visitors type is never stored.');
   }
   return warnings;
 }

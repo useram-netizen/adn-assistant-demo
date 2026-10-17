@@ -25,7 +25,9 @@ export const log = {
  * such as error messages from libraries, before it is logged.
  */
 export function redact(text: string): string {
+  // Long text is cut first: the patterns below take longer the longer the text is.
   return text
+    .slice(0, 4000)
     .replace(/[^\s@"'<>()[\]{}]+@[^\s@"'<>()[\]{}]+\.[a-z]{2,}/gi, '[email]')
     .replace(/\+?\d[\d\s().-]{6,}\d/g, (match) =>
       match.replace(/\D/g, '').length >= 9 ? '[number]' : match,

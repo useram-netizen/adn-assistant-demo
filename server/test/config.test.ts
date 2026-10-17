@@ -111,16 +111,42 @@ describe('loadConfig', () => {
     expect(() => loadConfig({ [key]: value })).toThrow(new RegExp(key));
   });
 
+  const sending = {
+    SMTP_HOST: 'smtp.example.com',
+    EMAIL_FROM: 'ADN <hello@example.com>',
+  };
+
   it('allows EMAIL_MODE=live only with NODE_ENV=production (rule 1)', () => {
-    expect(() => loadConfig({ EMAIL_MODE: 'live' })).toThrow(/live is only allowed/);
-    expect(() => loadConfig({ EMAIL_MODE: 'live', NODE_ENV: 'test' })).toThrow(ConfigError);
-    expect(loadConfig({ EMAIL_MODE: 'live', NODE_ENV: 'production' }).email.mode).toBe('live');
+    const live = { ...sending, TRACY_EMAIL: 'tracy@example.com', EMAIL_MODE: 'live' };
+    expect(() => loadConfig(live)).toThrow(/live is only allowed/);
+    expect(() => loadConfig({ ...live, NODE_ENV: 'test' })).toThrow(ConfigError);
+    expect(loadConfig({ ...live, NODE_ENV: 'production' }).email.mode).toBe('live');
   });
 
   it('needs EMAIL_REDIRECT_TO in redirect mode', () => {
-    expect(() => loadConfig({ EMAIL_MODE: 'redirect' })).toThrow(/EMAIL_REDIRECT_TO/);
-    const config = loadConfig({ EMAIL_MODE: 'redirect', EMAIL_REDIRECT_TO: 'test@example.com' });
+    expect(() => loadConfig({ ...sending, EMAIL_MODE: 'redirect' })).toThrow(/EMAIL_REDIRECT_TO/);
+    const config = loadConfig({
+      ...sending,
+      EMAIL_MODE: 'redirect',
+      EMAIL_REDIRECT_TO: 'test@example.com',
+    });
     expect(config.email.redirectTo).toBe('test@example.com');
+  });
+
+  it('stops at startup when a sending mode has nowhere to send from, instead of failing every email', () => {
+    const redirect = { EMAIL_MODE: 'redirect', EMAIL_REDIRECT_TO: 'test@example.com' };
+    expect(() => loadConfig(redirect)).toThrow(/SMTP_HOST/);
+    expect(() => loadConfig({ ...redirect, SMTP_HOST: 'smtp.example.com' })).toThrow(/EMAIL_FROM/);
+    const live = { ...sending, EMAIL_MODE: 'live', NODE_ENV: 'production' };
+    expect(() => loadConfig(live)).toThrow(/TRACY_EMAIL/);
+    expect(() => loadConfig({ ...live, SMTP_HOST: '' })).toThrow(/SMTP_HOST/);
+    // Preview needs none of it.
+    expect(loadConfig({}).email.mode).toBe('preview');
+  });
+
+  it('wants a long admin token (24 characters or more)', () => {
+    expect(() => loadConfig({ ADMIN_TOKEN: 'a'.repeat(23) })).toThrow(/ADMIN_TOKEN/);
+    expect(loadConfig({ ADMIN_TOKEN: 'a'.repeat(24) }).adminToken).toBe('a'.repeat(24));
   });
 
   it('rejects ALLOWED_EMBED_ORIGINS values that could change the CSP header', () => {
@@ -174,6 +200,13 @@ describe('configWarnings', () => {
       OPENAI_API_KEY: 'sk-test',
     });
     expect(configWarnings(config)).toEqual([]);
+  });
+
+  it('says STORE_TRANSCRIPTS does nothing, since chat text is never stored', () => {
+    expect(configWarnings(loadConfig({ STORE_TRANSCRIPTS: 'true' })).join(' ')).toMatch(
+      /never stored/,
+    );
+    expect(configWarnings(loadConfig({})).join(' ')).not.toMatch(/STORE_TRANSCRIPTS/);
   });
 
   it('warns when the AI is on without a key', () => {

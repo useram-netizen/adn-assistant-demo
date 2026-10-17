@@ -22,8 +22,9 @@ import {
 } from '../email/templates.js';
 import { log } from '../lib/log.js';
 import { matchesSafetyKeywords } from '../safety/keywords.js';
+import { FixedWindowCounter } from '../security/rateLimit.js';
 import type { ApiError, LeadResponse, TracyResponse } from '../shared/api.js';
-import { createDelivery, type SetTimer } from './delivery.js';
+import { createDelivery, type Delivery, type SetTimer } from './delivery.js';
 import {
   MAX_SELECTED_MEMBERS,
   createLeadSchemas,
@@ -50,6 +51,13 @@ export interface LeadServiceDeps {
   store: Store;
   events: EventSink;
   mailer: Mailer;
+  /**
+   * Sends the emails. Pass one to wait for it at shutdown (delivery.idle()); by default the
+   * service makes its own, from the mailer, store and events above.
+   */
+  delivery?: Delivery;
+  /** False only with RATE_LIMITS=off (tests): no cap on confirmation emails per address. */
+  limitsEnabled?: boolean;
   /** Waits before each retry (default 30 s, 2 min, 10 min). For tests. */
   retryDelaysMs?: readonly number[];
   /** Schedules retries (default setTimeout). For tests. */
@@ -71,6 +79,12 @@ export interface LeadService {
 export const TRACY_EMAIL_UNSET = '(TRACY_EMAIL is not set)';
 
 const NOT_IN_MATCH: SubmitResult<never> = { status: 400, body: { error: 'not_in_match' } };
+
+/**
+ * The form is open to anyone and emails the address typed into it, so one address gets at most
+ * this many confirmations a day (the professionals still get the request).
+ */
+export const MAX_CONFIRMATIONS_PER_ADDRESS = 5;
 
 function ok<T>(body: T): SubmitResult<T> {
   return { status: 200, body };
@@ -95,14 +109,25 @@ export function createLeadService(deps: LeadServiceDeps): LeadService {
   const now = deps.now ?? (() => new Date());
   const newId = deps.newId ?? randomUUID;
   const schemas = createLeadSchemas(geo);
-  const delivery = createDelivery({
-    mailer,
-    store,
-    events,
-    retryDelaysMs: deps.retryDelaysMs,
-    setTimer: deps.setTimer,
-    now,
-  });
+  const delivery =
+    deps.delivery ??
+    createDelivery({
+      mailer,
+      store,
+      events,
+      retryDelaysMs: deps.retryDelaysMs,
+      setTimer: deps.setTimer,
+      now,
+    });
+  const confirmations = new FixedWindowCounter(24 * 60 * 60_000, MAX_CONFIRMATIONS_PER_ADDRESS);
+
+  /** Whether the visitor's address may get a confirmation now (see MAX_CONFIRMATIONS_PER_ADDRESS). */
+  function confirmationAllowed(address: string): boolean {
+    if (deps.limitsEnabled === false) return true;
+    const allowed = confirmations.hit(address.trim().toLowerCase()).allowed;
+    if (!allowed) log.warn('confirmation_skipped', { reason: 'address_limit' });
+    return allowed;
+  }
 
   async function saveLead(lead: Lead): Promise<void> {
     try {
@@ -177,10 +202,15 @@ export function createLeadService(deps: LeadServiceDeps): LeadService {
     };
   }
 
-  /** Saves the lead, then sends; the recipients the emails update are a copy of the saved ones. */
+  /**
+   * Saves the lead, then starts sending. The visitor's answer does not wait for the mail server:
+   * a slow one would make the widget give up and offer to send everything again. Sending is
+   * tracked by the delivery (idle() waits for it), and failures are retried there. The
+   * recipients the emails update are a copy of the saved ones.
+   */
   async function saveAndSend(lead: Lead, emails: ReadonlyArray<OutgoingEmail | null>) {
     await saveLead(lead);
-    await delivery.deliver({
+    void delivery.deliver({
       leadId: lead.id,
       sessionId: lead.sessionId,
       site: lead.site,
@@ -220,6 +250,7 @@ export function createLeadService(deps: LeadServiceDeps): LeadService {
     }
 
     const copyTo = config.email.leadCopyTo;
+    const confirm = confirmationAllowed(input.email);
     const lead: Lead = {
       ...baseLead(input),
       kind: 'pros',
@@ -227,7 +258,7 @@ export function createLeadService(deps: LeadServiceDeps): LeadService {
       memberIds: members.map((member) => member.id),
       recipients: [
         ...members.map((member) => recipient('professional', member.email, member.id)),
-        recipient('client', input.email),
+        ...(confirm ? [recipient('client', input.email)] : []),
         ...(copyTo ? [recipient('copy', copyTo)] : []),
       ],
     };
@@ -248,11 +279,15 @@ export function createLeadService(deps: LeadServiceDeps): LeadService {
         replyTo: input.email,
         ...forPros,
       })),
-      {
-        kind: 'client',
-        to: input.email,
-        ...clientConfirmationEmail(request, names, config.links),
-      },
+      ...(confirm
+        ? [
+            {
+              kind: 'client' as const,
+              to: input.email,
+              ...clientConfirmationEmail(request, names, config.links),
+            },
+          ]
+        : []),
       ...(copyTo
         ? [
             {
@@ -302,12 +337,13 @@ export function createLeadService(deps: LeadServiceDeps): LeadService {
       ? { ...recipient('tracy', tracyTo), status: 'failed', lastError: 'tracy_email_unset' }
       : recipient('tracy', tracyTo);
 
+    const confirm = confirmationAllowed(input.email);
     const lead: Lead = {
       ...baseLead(input),
       kind: 'tracy',
       reason: input.reason,
       memberIds: [],
-      recipients: [tracyRecipient, recipient('client', input.email)],
+      recipients: [tracyRecipient, ...(confirm ? [recipient('client', input.email)] : [])],
     };
     if (cannotSend) log.error('tracy_email_unset', { leadId: lead.id });
 
@@ -321,7 +357,15 @@ export function createLeadService(deps: LeadServiceDeps): LeadService {
             replyTo: input.email,
             ...tracyEmail(request, input.reason),
           },
-      { kind: 'client_tracy', to: input.email, ...clientTracyEmail(request, config.links) },
+      ...(confirm
+        ? [
+            {
+              kind: 'client_tracy' as const,
+              to: input.email,
+              ...clientTracyEmail(request, config.links),
+            },
+          ]
+        : []),
     ];
 
     log.info('tracy_lead_received', { leadId: lead.id, reason: input.reason });

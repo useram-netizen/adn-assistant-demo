@@ -77,6 +77,14 @@ export async function createMemberDirectory({
     async reload() {
       try {
         const next = await loadMembers(config, geo);
+        // A file that suddenly has nobody in it is a mistake, not news: keep the list we have.
+        if (next.report.searchable.total === 0 && current.report.searchable.total > 0) {
+          log.error('members_reload_rejected', {
+            reason: 'the new file has no searchable members',
+            kept: current.report.searchable.total,
+          });
+          return;
+        }
         current = next;
         log.info('members_reloaded', {
           members: next.report.members,

@@ -64,11 +64,6 @@ function quoteHtml(text: string): string {
   return `<div style="margin:4px 0 16px;padding:12px 16px;border-left:4px solid ${COLOR.border};background-color:${COLOR.quote};">${htmlText(text)}</div>`;
 }
 
-/** The visitor's own message, set apart from our wording. */
-export function quote(text: string): Block {
-  return { html: quoteHtml(text), text };
-}
-
 export function bulletList(items: readonly string[]): Block {
   const html = items.map((item) => `<li style="margin:0 0 4px;">${htmlText(item)}</li>`).join('');
   return {

@@ -1,4 +1,4 @@
-import { appendFile, mkdir, readFile, rename, writeFile } from 'node:fs/promises';
+import { appendFile, chmod, mkdir, readFile, rename, stat, writeFile } from 'node:fs/promises';
 import { join } from 'node:path';
 import type { DateRange, EventRecord, GapRecord, Lead, LeadRecipient } from '../domain/types.js';
 import { log } from '../lib/log.js';
@@ -16,20 +16,38 @@ import type { LeadStore } from './types.js';
  * Writes of one file never interleave: each file has a queue. A disk problem (a folder that can't
  * be created or written) is logged by error code only and never thrown: leads stay readable from
  * memory for this process, and gaps and events are dropped. Nothing here blocks the visitor.
- * Records contain visitors' contact details: the folder is in .gitignore and never logged.
+ * Records contain visitors' contact details: the folder is in .gitignore and never logged, and
+ * only the server's own user can read it (folder 0700, files 0600). The logs of events and gaps
+ * stop growing at a size limit, so a flood of requests can't fill the disk; leads never do.
  */
+
+/** Logs that stop growing at this size (bytes). Leads are never cut off. */
+const DEFAULT_FILE_LIMITS: Readonly<Record<string, number>> = {
+  'events.jsonl': 25 * 1024 * 1024,
+  'gaps.jsonl': 5 * 1024 * 1024,
+};
+const PRIVATE_DIR = 0o700;
+const PRIVATE_FILE = 0o600;
+const FULL_WARNING_EVERY_MS = 60 * 60_000;
+
 export class FileStore implements LeadStore {
   readonly kind = 'file';
 
   private closed = false;
   private leads: Map<string, Lead> | null = null;
   private readonly queues = new Map<string, Promise<unknown>>();
+  private readonly sizes = new Map<string, number>();
+  private readonly warnedFullAt = new Map<string, number>();
 
-  constructor(private readonly dir: string) {}
+  constructor(
+    private readonly dir: string,
+    private readonly limits: Readonly<Record<string, number>> = DEFAULT_FILE_LIMITS,
+  ) {}
 
   async init(): Promise<void> {
     try {
-      await mkdir(this.dir, { recursive: true });
+      await mkdir(this.dir, { recursive: true, mode: PRIVATE_DIR });
+      await this.makePrivate();
       await this.loadLeads();
     } catch (error) {
       log.error('storage_init_failed', { store: this.kind, code: errorCode(error) });
@@ -130,7 +148,10 @@ export class FileStore implements LeadStore {
       const path = join(this.dir, 'leads.jsonl');
       const temp = `${path}.${process.pid}.tmp`;
       try {
-        await writeFile(temp, leads.map((lead) => `${JSON.stringify(lead)}\n`).join(''), 'utf8');
+        await writeFile(temp, leads.map((lead) => `${JSON.stringify(lead)}\n`).join(''), {
+          encoding: 'utf8',
+          mode: PRIVATE_FILE,
+        });
         await rename(temp, path);
       } catch (error) {
         log.error('storage_write_failed', {
@@ -147,12 +168,49 @@ export class FileStore implements LeadStore {
     const text = records.map((record) => `${JSON.stringify(record)}\n`).join('');
     return this.enqueue(file, async () => {
       try {
-        await mkdir(this.dir, { recursive: true });
-        await appendFile(join(this.dir, file), text, 'utf8');
+        await mkdir(this.dir, { recursive: true, mode: PRIVATE_DIR });
+        const limit = this.limits[file];
+        if (limit !== undefined) {
+          const size = await this.sizeOf(file);
+          if (size + Buffer.byteLength(text) > limit) return this.warnFull(file);
+          this.sizes.set(file, size + Buffer.byteLength(text));
+        }
+        await appendFile(join(this.dir, file), text, { encoding: 'utf8', mode: PRIVATE_FILE });
       } catch (error) {
         log.error('storage_write_failed', { store: this.kind, file, code: errorCode(error) });
       }
     });
+  }
+
+  /** The folder and the files in it can be read by this server's user only. */
+  private async makePrivate(): Promise<void> {
+    try {
+      await chmod(this.dir, PRIVATE_DIR);
+      for (const file of ['leads.jsonl', 'gaps.jsonl', 'events.jsonl']) {
+        await chmod(join(this.dir, file), PRIVATE_FILE).catch(() => undefined);
+      }
+    } catch (error) {
+      log.warn('storage_chmod_failed', { store: this.kind, code: errorCode(error) });
+    }
+  }
+
+  /** The size of a log file in bytes (0 if there is none yet), counted once and then kept. */
+  private async sizeOf(file: string): Promise<number> {
+    const known = this.sizes.get(file);
+    if (known !== undefined) return known;
+    const size = await stat(join(this.dir, file))
+      .then((info) => info.size)
+      .catch(() => 0);
+    this.sizes.set(file, size);
+    return size;
+  }
+
+  /** A log that has reached its limit drops new records; this says so (at most once an hour). */
+  private warnFull(file: string): void {
+    const now = Date.now();
+    if (now - (this.warnedFullAt.get(file) ?? 0) < FULL_WARNING_EVERY_MS) return;
+    this.warnedFullAt.set(file, now);
+    log.warn('storage_file_full', { store: this.kind, file, limitBytes: this.limits[file] });
   }
 
   /** The records of a log file. A missing file is empty; corrupt lines are skipped (counted, never shown). */

@@ -27,23 +27,6 @@ describe('POST /api/events', () => {
           { type: 'step_viewed', data: { step: 'welcome' }, at: now() },
           { type: 'answer', data: { step: 'location', value: 'GA' }, at: now() },
           { type: 'branch', data: { branch: 'uk' }, at: now() },
-          {
-            type: 'results_shown',
-            data: {
-              platinum: 6,
-              gold: 10,
-              silver: 19,
-              total: 35,
-              category: 'attorney',
-              state: 'GA',
-            },
-            at: now(),
-          },
-          {
-            type: 'no_match',
-            data: { category: 'attorney', state: 'WY', countyFips: '56039' },
-            at: now(),
-          },
           { type: 'pros_selected', data: { count: 2 }, at: now() },
           { type: 'link_clicked', data: { link: 'join' }, at: now() },
           { type: 'safety_shown', data: { trigger: 'keyword' }, at: now() },
@@ -51,7 +34,7 @@ describe('POST /api/events', () => {
       );
     expect(res.status).toBe(204);
     const saved = await deps.store.listEvents();
-    expect(saved).toHaveLength(9);
+    expect(saved).toHaveLength(7);
     expect(saved[0]).toMatchObject({
       site: 'divorceamicably',
       source: 'client',
@@ -75,12 +58,26 @@ describe('POST /api/events', () => {
       { type: 'answer', data: { step: 'x', value: 'jane@example.com' }, at: now() },
       { type: 'answer', data: { step: 'x', value: 'a'.repeat(65) }, at: now() },
       { type: 'answer', data: { step: 'x', value: 'GA', text: 'extra key' }, at: now() },
+      // Right shape, but not one of the screens or answers the widget has:
+      { type: 'step_viewed', data: { step: 'whatever' }, at: now() },
+      { type: 'answer', data: { step: 'location', value: 'Zzz' }, at: now() },
+      { type: 'answer', data: { step: 'location', value: 'whatever' }, at: now() },
+      { type: 'answer', data: { step: 'location', value: '555-123-4567' }, at: now() },
+      { type: 'answer', data: { step: 'location', value: '5551234567' }, at: now() },
+      { type: 'answer', data: { step: 'location', value: 'jane.doe.gmail.com' }, at: now() },
+      { type: 'answer', data: { step: 'location', value: 'ga' }, at: now() },
       { type: 'step_viewed', data: { step: '' }, at: now() },
       { type: 'branch', data: { branch: 'somewhere' }, at: now() },
       { type: 'pros_selected', data: { count: 6 }, at: now() },
+      // Made by the server when a search happens, never taken from the visitor's device:
       {
         type: 'results_shown',
-        data: { platinum: -1, gold: 0, silver: 0, total: 0, category: 'a', state: 'GA' },
+        data: { platinum: 6, gold: 10, silver: 19, total: 35, category: 'attorney', state: 'GA' },
+        at: now(),
+      },
+      {
+        type: 'no_match',
+        data: { category: 'attorney', state: 'WY', countyFips: '56039' },
         at: now(),
       },
       { type: 'ai_call', data: { kind: 'interpret', ms: 1, ok: true, tokens: 1 }, at: now() }, // server-only
@@ -92,6 +89,61 @@ describe('POST /api/events', () => {
       const res = await send(event);
       expect(res.status, JSON.stringify(event)).toBe(400);
     }
+  });
+
+  it('accepts every real answer the widget can give: states, counties, options, kinds and subtypes', async () => {
+    const deps = await testDeps();
+    const app = await testApp({}, { deps });
+    const values = [
+      ['welcome', 'divorce'],
+      ['welcome', 'professional'],
+      ['location', 'uk'],
+      ['location', 'outside'],
+      ['location', 'WY'],
+      ['county', '56039'],
+      ['county', 'not_sure'],
+      ['county_confirm', 'yes'],
+      ['county_confirm', 'no'],
+      ['stage', 'in_process'],
+      ['situation', 'skip'],
+      ['category', 'qdro_attorney'],
+      ['category', 'more'],
+      ['category_help', 'see_all'],
+      ['subcategory', 'cdfa'],
+      ['subcategory', 'interior'],
+      ['subcategory', 'any'],
+      ['no_match', 'tracy'],
+      ['no_match', 'another'],
+      ['done', 'restart'],
+    ];
+    const res = await request(app)
+      .post('/api/events')
+      .send(
+        batch(
+          values.map(([step, value]) => ({ type: 'answer', data: { step, value }, at: now() })),
+        ),
+      );
+    expect(res.status).toBe(204);
+    expect(await deps.store.listEvents()).toHaveLength(values.length);
+  });
+
+  it('keeps one session to 400 events, and says nothing about it', async () => {
+    const deps = await testDeps({ rateLimitEnabled: true });
+    const app = await testApp({}, { deps });
+    const sessionId = randomUUID();
+    const fifty = Array.from({ length: 50 }, () => ({
+      type: 'step_viewed',
+      data: { step: 'welcome' },
+      at: now(),
+    }));
+    for (let i = 0; i < 10; i += 1) {
+      const res = await request(app)
+        .post('/api/events')
+        .send({ sessionId, site: 'divorceamicably', events: fifty });
+      expect(res.status).toBe(204);
+    }
+    // 400 are kept; the 9th and 10th batches were quietly ignored.
+    expect((await deps.store.listEvents()).length).toBe(400);
   });
 
   it('rejects a whole batch if any event is bad, and stores nothing', async () => {
@@ -287,6 +339,24 @@ describe('admin routes', () => {
       expect(res.status).toBe(401);
       expect(res.body).toEqual({ error: 'unauthorized' });
       expect(res.headers['www-authenticate']).toBe('Bearer');
+    }
+  });
+
+  it('makes an address that keeps sending wrong tokens wait (429), and counts only the wrong ones', async () => {
+    const { app } = await adminApp();
+    // Right tokens never count, however many.
+    for (let i = 0; i < 12; i += 1) {
+      await request(app).get('/api/admin/stats').set(auth).expect(200);
+    }
+    for (let i = 0; i < 10; i += 1) {
+      await request(app).get('/api/admin/stats').set('Authorization', 'Bearer wrong').expect(401);
+    }
+    // The eleventh try is turned away, even with the right token.
+    for (const header of ['Bearer wrong', auth.Authorization]) {
+      const res = await request(app).get('/api/admin/stats').set('Authorization', header);
+      expect(res.status).toBe(429);
+      expect(res.body).toEqual({ error: 'rate_limited' });
+      expect(res.headers['retry-after']).toBe('900');
     }
   });
 
