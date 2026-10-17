@@ -304,14 +304,50 @@ describe('POST /api/ai/interpret', () => {
 });
 
 describe('POST /api/ai/county', () => {
-  it('accepts a county’s name without the AI', async () => {
-    const { res, ai } = await post('county', body({ state: 'GA', text: 'Cobb' }));
+  it('accepts "Cobb County" without the AI', async () => {
+    const { res, ai } = await post('county', body({ state: 'GA', text: 'cobb county' }));
     expect(res.body).toMatchObject({
       countyFips: '13067',
       countyName: 'Cobb County',
       source: 'exact',
     });
     expect(ai.calls).toHaveLength(0);
+  });
+
+  it('asks the AI first about a bare name that is also a city: Houston is in Harris County', async () => {
+    const ai = fakeAi(() =>
+      ok({ county_fips: '48201', confidence: 'high', reply: '', safety_concern: false }),
+    );
+    const { res } = await post('county', body({ state: 'TX', text: 'Houston' }), ai);
+    expect(res.body).toMatchObject({
+      countyFips: '48201',
+      countyName: 'Harris County',
+      source: 'ai',
+    });
+    expect(ai.calls).toHaveLength(1);
+  });
+
+  it('offers the county of that name when the AI is off, fails or has no answer', async () => {
+    const failing = await post('county', body({ state: 'TX', text: 'Houston' }));
+    expect(failing.res.body).toMatchObject({
+      countyName: 'Houston County',
+      confidence: 'low',
+      source: 'exact',
+    });
+    const none = fakeAi(() =>
+      ok({ county_fips: null, confidence: 'low', reply: '', safety_concern: false }),
+    );
+    const noAnswer = await post('county', body({ state: 'GA', text: 'Cobb' }), none);
+    expect(noAnswer.res.body).toMatchObject({ countyName: 'Cobb County', source: 'exact' });
+    const off = await post(
+      'county',
+      body({ state: 'GA', text: 'Cobb' }),
+      fakeAi(() => failed()),
+      {
+        AI_ENABLED: 'false',
+      },
+    );
+    expect(off.res.body).toMatchObject({ countyName: 'Cobb County', source: 'exact' });
   });
 
   it('asks the AI about a city or ZIP code and returns a county of the state', async () => {

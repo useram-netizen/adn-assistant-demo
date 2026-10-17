@@ -4,8 +4,9 @@ import { hasSubtypes, isCategoryKey, isStageKey, type CategoryKey } from '@adn/t
 import { ApiError, type Api, type PublicConfig } from '../lib/api';
 import type { EmbedMode } from '../lib/embedContext';
 import type { Tracker } from '../lib/events';
-import { emptyContact, joinNames, prefillMessage } from './form';
-import { optionLabel } from './options';
+import { contactFieldsOf, emptyContact, joinNames, prefillMessage } from './form';
+import { namesACounty, optionLabel } from './options';
+import { wantsToSkip, yesOrNo } from './shortAnswers';
 import {
   MAX_SELECTED,
   SHOW_MORE_STEP,
@@ -124,8 +125,13 @@ export class ChatController {
   /** How many runs are still going in the latest epoch (see `run`). */
   private runs = { epoch: -1, count: 0 };
   private nextId = 1;
-  /** The contact form as typed so far; kept outside the state so typing doesn't re-render. */
+  /**
+   * The contact form as the visitor typed it; kept outside the state so typing doesn't
+   * re-render. Null until they type something, and after the request has been sent.
+   */
   private draft: ContactValues | null = null;
+  /** What the message box started with when the draft began (a changed summary replaces it). */
+  private draftPrefill = '';
   /** Where focus goes when the next step appears (see ChatState.focus). */
   private nextFocus: ChatState['focus'] = 'none';
 
@@ -140,9 +146,16 @@ export class ChatController {
     return () => this.listeners.delete(listener);
   };
 
-  /** Back and Start over have something to undo. */
+  /** Back has something to undo: not while a request is on its way, nor once it was sent. */
   get canGoBack(): boolean {
-    return this.state.history.length > 0 || this.state.items.length > 1;
+    return this.canRestart && this.state.step !== 'done';
+  }
+
+  /** Start over has something to clear (a safety card alone is not progress). */
+  get canRestart(): boolean {
+    const { history, items, form } = this.state;
+    if (form?.submitting) return false;
+    return history.length > 0 || items.filter((item) => item.kind !== 'safety').length > 1;
   }
 
   // ---------------------------------------------------------------- Visitor actions
@@ -183,8 +196,26 @@ export class ChatController {
   /** What the visitor typed in the text box. */
   say(raw: string): void {
     const text = raw.trim().slice(0, 1000);
-    const { step, busy } = this.state;
+    const { step, busy, confirm } = this.state;
     if (!text || busy || !step || step === 'contact' || step === 'tracy') return;
+
+    // "yes", "no" or "skip" typed instead of tapped: the same as the button.
+    const reply = yesOrNo(text);
+    const tapped =
+      reply && confirm
+        ? () => this.confirmAnswer(reply === 'yes')
+        : reply && step === 'county_confirm'
+          ? () => this.choose(reply)
+          : step === 'situation' && wantsToSkip(text)
+            ? () => this.choose('skip')
+            : null;
+    if (tapped) {
+      tapped();
+      // The visitor is typing: the cursor stays in the text box.
+      this.nextFocus = 'composer';
+      return;
+    }
+
     this.nextFocus = 'composer';
     this.set({ confirm: null });
     this.add('visitor', text);
@@ -242,19 +273,19 @@ export class ChatController {
     const { form, busy } = this.state;
     if (!form || form.submitting || busy) return;
     this.draft = values;
-    this.set({ form: { ...form, values, submitting: true, error: null } });
+    this.set({ form: { kind: form.kind, values, submitting: true, error: null } });
     void this.sendForm(form.kind, values, this.epoch);
   }
 
   back(): void {
+    if (!this.canGoBack) return;
     const { history } = this.state;
     const snapshot = history.at(-1);
     if (!snapshot) {
-      if (this.canGoBack) this.restart();
+      this.restart();
       return;
     }
     this.epoch += 1;
-    this.draft = null;
     this.nextFocus = 'input';
     const s = this.state;
     const kept = s.items.slice(0, snapshot.itemsLen);
@@ -287,13 +318,19 @@ export class ChatController {
     }
   }
 
-  /** Clears everything except the session and whether the safety card was shown. */
+  /** Clears everything except the session and the safety card, which stays at the top. */
   restart(): void {
+    if (this.state.form?.submitting) return;
     this.epoch += 1;
     this.draft = null;
     this.nextFocus = 'input';
-    const { safetyShown, lists, started, stepSeq } = this.state;
-    this.state = { ...initialState(safetyShown, lists), started, stepSeq };
+    const { safetyShown, lists, started, stepSeq, items } = this.state;
+    this.state = {
+      ...initialState(safetyShown, lists),
+      started,
+      stepSeq,
+      items: items.filter((item) => item.kind === 'safety'),
+    };
     this.emit();
     void this.run((epoch) => this.show('welcome', epoch));
   }
@@ -411,7 +448,9 @@ export class ChatController {
       const label = optionLabel(step, result.optionId, this.state);
       if (label !== null) {
         if (result.reply && !(await this.botSays([result.reply], epoch))) return;
-        const direct = ACCEPT_DIRECTLY.has(step) || result.source === 'exact';
+        // A bare county name may be a city ("Houston"): the visitor confirms those.
+        const exact = result.source === 'exact' && (step !== 'county' || namesACounty(text));
+        const direct = ACCEPT_DIRECTLY.has(step) || exact;
         if (direct || NO_CONFIRM.has(result.optionId)) {
           this.applyChoice(step, result.optionId, label);
           return;
@@ -675,23 +714,32 @@ export class ChatController {
     const { answers } = this.state;
     let form = null;
     if (step === 'contact' || step === 'tracy') {
+      const prefill = prefillMessage({
+        analysis: this.state.analysis,
+        texts: this.state.texts,
+        stage: answers.stage,
+        category: answers.category,
+        countyName: answers.countyName,
+        stateName: answers.stateName,
+        outside: answers.tracyReason === 'outside',
+      });
+      // Going back and forward again keeps what was typed (agreeing is asked again, and a
+      // message the visitor did not change follows the latest summary).
+      const typed = this.draft;
       form = {
         kind: step === 'contact' ? ('pros' as const) : ('tracy' as const),
-        values: emptyContact(
-          prefillMessage({
-            analysis: this.state.analysis,
-            texts: this.state.texts,
-            stage: answers.stage,
-            category: answers.category,
-            countyName: answers.countyName,
-            stateName: answers.stateName,
-            outside: answers.tracyReason === 'outside',
-          }),
-        ),
+        values: typed
+          ? {
+              ...typed,
+              message: typed.message === this.draftPrefill ? prefill : typed.message,
+              consent: false,
+              trap: '',
+            }
+          : emptyContact(prefill),
         submitting: false,
         error: null,
       };
-      this.draft = form.values;
+      this.draftPrefill = prefill;
     }
     if (epoch !== this.epoch) return;
 
@@ -849,15 +897,26 @@ export class ChatController {
       }
     } catch (error) {
       if (epoch !== this.epoch || !this.state.form) return;
+      const { form } = this.state;
+      // The server did not accept some fields: show them next to the fields.
+      const serverFields =
+        error instanceof ApiError && error.code === 'validation_failed'
+          ? contactFieldsOf(error.fields)
+          : [];
+      if (serverFields.length > 0) {
+        this.set({ form: { ...form, submitting: false, error: null, serverFields } });
+        return;
+      }
       const message =
         error instanceof ApiError && error.rateLimited
-          ? copy.widget.rateLimited
+          ? copy.form.rateLimited
           : copy.form.submitError;
-      this.set({ form: { ...this.state.form, submitting: false, error: message } });
+      this.set({ form: { ...form, submitting: false, error: message } });
     }
   }
 
   private finishForm(done: { kind: 'pros' | 'tracy'; names: string[]; safety: boolean }): void {
+    this.draft = null;
     this.set({ done: { kind: done.kind, names: done.names, safety: done.safety } });
     this.go('done');
   }
@@ -867,10 +926,13 @@ export class ChatController {
   /** What the last screen says: the confirmation, then the next steps. */
   private doneMessages(): string[] {
     const { done } = this.state;
+    const names = done?.names ?? [];
     const first =
       done?.kind === 'tracy'
         ? copy.steps.done.messageTracy
-        : fill(copy.steps.done.message, { names: joinNames(done?.names ?? []) });
+        : names.length > 0
+          ? fill(copy.steps.done.message, { names: joinNames(names) })
+          : copy.steps.done.messageNoNames;
     return [first, copy.steps.whatsNext.message];
   }
 

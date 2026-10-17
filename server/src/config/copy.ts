@@ -76,8 +76,6 @@ export const copy = {
       { label: 'Text START to 88788', href: 'sms:88788?&body=START' },
       { label: 'Call or text 988', href: 'tel:988' },
     ],
-    /** After the card, the conversation carries on. */
-    continue: 'Whenever you’re ready, we can keep going.',
   },
 
   steps: {
@@ -200,6 +198,8 @@ export const copy = {
     },
     done: {
       message: "Done! Your request went to {names}. You'll also get a confirmation email.",
+      /** When there is no list of names to show. */
+      messageNoNames: "Done! Your request was sent. You'll also get a confirmation email.",
       messageTracy: "Done! Your message went to Tracy. You'll also get a confirmation email.",
     },
     whatsNext: {
@@ -391,9 +391,12 @@ export const copy = {
       phoneNeeded: 'Please add a phone number, or choose email.',
       consent: 'Please tick this box to continue.',
       tooLong: 'Please keep this under {max} characters.',
+      invalid: 'Please check this.',
       summary: 'Please check the highlighted fields.',
     },
     submitError: "Sorry, your request didn't go through. Please try again.",
+    /** Requests that email people are limited per hour, so "wait a moment" would mislead. */
+    rateLimited: "You've sent several requests recently. Please try again a little later.",
     /** The message pre-fill when there is no AI summary: the stage, then the visitor's own text. */
     prefillStage: {
       exploring: "I'm just exploring my options.",

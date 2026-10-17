@@ -15,6 +15,7 @@ interface ComposerProps {
   hideText?: boolean;
   placeholder?: string;
   canGoBack: boolean;
+  canRestart: boolean;
   onBack: () => void;
   onRestart: () => void;
   onSay: (text: string) => void;
@@ -28,6 +29,7 @@ export function Composer({
   hideText = false,
   placeholder = copy.widget.inputPlaceholder,
   canGoBack,
+  canRestart,
   onBack,
   onRestart,
   onSay,
@@ -72,7 +74,7 @@ export function Composer({
           <BackIcon />
           {copy.widget.back}
         </button>
-        <button type="button" className="adn-nav-button" onClick={onRestart} disabled={!canGoBack}>
+        <button type="button" className="adn-nav-button" onClick={onRestart} disabled={!canRestart}>
           <RestartIcon />
           {copy.widget.startOver}
         </button>

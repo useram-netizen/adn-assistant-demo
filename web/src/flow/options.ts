@@ -6,6 +6,7 @@ import {
   STAGE_KEYS,
   SUBTYPES,
   hasSubtypes,
+  isCategoryKey,
   nextSuggestions,
   type CategoryKey,
 } from '@adn/taxonomy';
@@ -139,5 +140,17 @@ export function optionLabel(
   if (step === 'county' && id !== 'not_sure') {
     return context.lists.counties.find((county) => county.fips === id)?.name ?? null;
   }
+  // The AI is offered every kind of professional on these steps, whichever buttons show.
+  if (
+    (step === 'category' || step === 'category_more' || step === 'category_help') &&
+    isCategoryKey(id)
+  ) {
+    return copy.categories[id];
+  }
   return stepOptions(step, context).find((option) => option.id === id)?.label ?? null;
+}
+
+/** The text says it is a county ("Cobb County"), not a city that happens to share the name. */
+export function namesACounty(text: string): boolean {
+  return /\b(county|parish|borough|census area)\b/i.test(text);
 }

@@ -59,6 +59,8 @@ export class ApiError extends Error {
   constructor(
     readonly status: number,
     readonly code: string,
+    /** The form fields the server did not accept (a 400 `validation_failed`). */
+    readonly fields: readonly string[] = [],
   ) {
     super(`${status} ${code}`);
   }
@@ -110,10 +112,18 @@ export function createApi(fetchImpl: FetchLike = (input, init) => fetch(input, i
         signal: controller.signal,
       });
       if (!response.ok) {
-        const error = (await response.json().catch(() => ({}))) as { error?: unknown };
+        const error = (await response.json().catch(() => ({}))) as {
+          error?: unknown;
+          fields?: unknown;
+        };
         throw new ApiError(
           response.status,
           typeof error.error === 'string' ? error.error : 'server_error',
+          Array.isArray(error.fields)
+            ? error.fields
+                .filter((field): field is string => typeof field === 'string')
+                .slice(0, 20)
+            : [],
         );
       }
       return response.status === 204 ? (undefined as T) : ((await response.json()) as T);

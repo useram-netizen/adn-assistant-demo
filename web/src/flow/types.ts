@@ -79,6 +79,8 @@ export interface FormState {
   submitting: boolean;
   /** A friendly message for a failed submit (shown with a way to try again). */
   error: string | null;
+  /** The fields the server did not accept (shown next to those fields). */
+  serverFields?: readonly string[];
 }
 
 export interface DoneState {

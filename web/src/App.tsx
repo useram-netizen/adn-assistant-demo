@@ -79,7 +79,16 @@ export function App({ embed, typingDelayMs = DEFAULT_TYPING_DELAY_MS, api, track
       privacyUrl={null}
       reportHeight={load.status === 'error'}
       scrollKey={load.status}
-      composer={<Composer disabled canGoBack={false} onBack={noop} onRestart={noop} onSay={noop} />}
+      composer={
+        <Composer
+          disabled
+          canGoBack={false}
+          canRestart={false}
+          onBack={noop}
+          onRestart={noop}
+          onSay={noop}
+        />
+      }
     >
       {load.status === 'loading' ? (
         <TypingIndicator />

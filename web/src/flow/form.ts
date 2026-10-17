@@ -61,7 +61,9 @@ export type ContactField = 'firstName' | 'lastName' | 'email' | 'phone' | 'messa
 
 export type ContactErrors = Partial<Record<ContactField, string>>;
 
-const EMAIL = /^[^\s@]+@[^\s@]+\.[^\s@]{2,}$/;
+/** The server's rule for an email address (the one zod uses), so nothing passes here and fails there. */
+const EMAIL =
+  /^(?:[A-Za-z0-9_'+-]+\.)*[A-Za-z0-9_'+-]*[A-Za-z0-9_+-]@(?:[A-Za-z0-9][A-Za-z0-9-]*\.)+[A-Za-z]{2,}$/;
 const PHONE_CHARACTERS = /^[0-9 +().-]+$/;
 
 /** The same checks as the server (leads/validation.ts), with friendly messages. */
@@ -99,6 +101,27 @@ export function validateContact(values: ContactValues): ContactErrors {
 
   if (!values.consent) errors.consent = copy.form.errors.consent;
   return errors;
+}
+
+const SERVER_MESSAGES: Readonly<Record<ContactField, string>> = {
+  firstName: copy.form.errors.invalid,
+  lastName: copy.form.errors.invalid,
+  email: copy.form.errors.email,
+  phone: copy.form.errors.phone,
+  message: copy.form.errors.invalid,
+  consent: copy.form.errors.consent,
+};
+
+/** The form fields among those the server did not accept (it also names fields we do not show). */
+export function contactFieldsOf(fields: readonly string[]): ContactField[] {
+  return fields.filter((field): field is ContactField => Object.hasOwn(SERVER_MESSAGES, field));
+}
+
+/** Messages for the fields the server did not accept. */
+export function serverFieldErrors(fields: readonly string[]): ContactErrors {
+  return Object.fromEntries(
+    contactFieldsOf(fields).map((field) => [field, SERVER_MESSAGES[field]]),
+  );
 }
 
 /** "A", "A and B", "A, B and C". */

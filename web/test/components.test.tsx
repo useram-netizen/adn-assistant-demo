@@ -2,6 +2,7 @@ import { copy } from '@adn/copy';
 import { render, screen, waitFor, within } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { describe, expect, it, vi } from 'vitest';
+import { z } from 'zod';
 import { App } from '../src/App';
 import { Combobox } from '../src/chat/Combobox';
 import { filterOptions } from '../src/chat/filterOptions';
@@ -65,6 +66,30 @@ describe('Combobox', () => {
       'Jeff Davis County',
     ]);
     expect(filterOptions(counties, '')).toHaveLength(3);
+  });
+
+  it('matches a state’s postal code first: "GA" is Georgia, not Michigan', async () => {
+    const states = [
+      { value: 'GA', label: 'Georgia' },
+      { value: 'MI', label: 'Michigan' },
+      { value: 'NV', label: 'Nevada' },
+      { value: 'PA', label: 'Pennsylvania' },
+      { value: 'TX', label: 'Texas' },
+      { value: 'VA', label: 'Virginia' },
+    ];
+    expect(filterOptions(states, 'GA').map((o) => o.label)).toEqual(['Georgia', 'Michigan']);
+    expect(filterOptions(states, 'va').map((o) => o.label)).toEqual([
+      'Virginia',
+      'Nevada',
+      'Pennsylvania',
+    ]);
+    expect(filterOptions(states, ' T.X ').map((o) => o.label)).toEqual(['Texas']);
+
+    const user = userEvent.setup();
+    const { input, onSelect } = renderCombobox(states);
+    await user.type(input, 'GA');
+    await user.keyboard('{Enter}');
+    expect(onSelect).toHaveBeenCalledWith('GA');
   });
 
   it('picks with the arrow keys and Enter', async () => {
@@ -223,6 +248,65 @@ describe('the contact form', () => {
       copy.form.errors.required,
     );
     expect(screen.getByRole('checkbox')).toHaveAttribute('aria-invalid', 'true');
+  });
+
+  it('marks the fields the server did not accept, and takes the visitor to the first', () => {
+    const { rerender } = render(
+      <ContactForm
+        form={{ ...baseForm, values: { ...validContact, email: 'jane@example.com' } }}
+        privacyUrl={null}
+        onDraft={() => undefined}
+        onSubmit={() => undefined}
+        onPrivacyClick={() => undefined}
+      />,
+    );
+    expect(screen.queryByRole('alert')).toBeNull();
+    rerender(
+      <ContactForm
+        form={{
+          ...baseForm,
+          values: { ...validContact, email: 'jane@example.com' },
+          serverFields: ['message', 'email', 'memberIds'],
+        }}
+        privacyUrl={null}
+        onDraft={() => undefined}
+        onSubmit={() => undefined}
+        onPrivacyClick={() => undefined}
+      />,
+    );
+    const email = screen.getByLabelText('Email', { selector: 'input[type=email]' });
+    expect(email).toHaveAttribute('aria-invalid', 'true');
+    expect(email).toHaveFocus();
+    expect(document.getElementById(email.getAttribute('aria-describedby')!)).toHaveTextContent(
+      copy.form.errors.email,
+    );
+    expect(screen.getByLabelText('Message')).toHaveAttribute('aria-invalid', 'true');
+    expect(screen.getByRole('alert')).toHaveTextContent(copy.form.errors.summary);
+  });
+
+  it('agrees with the server about what an email address is', () => {
+    const addresses = [
+      'jane@example.org',
+      'jane.doe+adn@example.co.uk',
+      "o'brien@example.com",
+      'john..doe@gmail.com',
+      'john@example.com.',
+      '.john@example.com',
+      'john.@example.com',
+      'josé@example.com',
+      'jane@localhost',
+      'jane@exa_mple.com',
+      'jane@-example.com',
+      'jane@example.c',
+      'jane doe@example.com',
+      'jane@@example.com',
+      'a@b.co',
+    ];
+    for (const address of addresses) {
+      const server = z.email().safeParse(address).success;
+      const widget = validateContact({ ...validContact, email: address }).email === undefined;
+      expect(widget, address).toBe(server);
+    }
   });
 
   it('checks the email, and asks for a phone number if the visitor wants to be phoned', async () => {

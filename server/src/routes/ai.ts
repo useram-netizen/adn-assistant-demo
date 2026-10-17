@@ -42,6 +42,9 @@ export interface AiRouterDeps {
   rateLimitEnabled: boolean;
 }
 
+/** The text says it is a county ("Cobb County", "Orleans Parish"), not a city of the same name. */
+const COUNTY_WORD = /\b(county|parish|borough|census area)\b/i;
+
 /** A ceiling for the whole server (calls per minute), as a backstop against runaway costs. */
 const GLOBAL_CALLS_PER_MINUTE = 300;
 
@@ -175,27 +178,31 @@ export function aiRouter({ config, geo, events, client, rateLimitEnabled }: AiRo
     const counties = geo.counties(state);
     if (!stateInfo) return sendValidationError(res, new z.ZodError([]));
 
-    // The text may simply be a county's name ("Cobb"): no AI needed.
+    // The text may be a county's name. "Cobb County" is that county, with no AI needed. A bare
+    // name is often a city ("Houston" is in Harris County, not Houston County), so the AI gets
+    // the first say and the county of that name is the answer only if the AI has none.
     const exactCounty = exactOption(
       text,
       specs('county', { state }).options.filter((option) => option.id !== 'not_sure'),
     );
     const named = exactCounty ? geo.county(exactCounty) : undefined;
-    if (named) {
-      const body: CountyFromPlaceResponse = {
-        countyFips: named.fips,
-        countyName: named.name,
-        confidence: 'high',
-        reply: '',
-        safety,
-        source: 'exact',
-      };
-      return void res.json(body);
-    }
+    const byName: CountyFromPlaceResponse | null = named
+      ? {
+          countyFips: named.fips,
+          countyName: named.name,
+          confidence: COUNTY_WORD.test(text) ? 'high' : 'low',
+          reply: '',
+          safety,
+          source: 'exact',
+        }
+      : null;
+    if (byName && COUNTY_WORD.test(text)) return void res.json(byName);
 
     const result = await ask(req, { sessionId, site, kind: 'county' }, (ai) =>
       countyFromPlace(ai, { state: stateInfo, counties, text }),
     );
+    if (byName && !result?.countyFips)
+      return void res.json({ ...byName, safety: safety || !!result?.safetyConcern });
     const body: CountyFromPlaceResponse = result
       ? {
           countyFips: result.countyFips,

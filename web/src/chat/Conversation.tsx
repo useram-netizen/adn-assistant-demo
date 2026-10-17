@@ -117,6 +117,7 @@ export function Conversation({ embed, config, controller }: ConversationProps) {
           hideText={formShowing}
           placeholder={placeholderFor(state.step)}
           canGoBack={controller.canGoBack}
+          canRestart={controller.canRestart}
           onBack={() => controller.back()}
           onRestart={() => controller.restart()}
           onSay={(text) => controller.say(text)}

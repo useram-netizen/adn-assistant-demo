@@ -1,6 +1,8 @@
+import type { LeadResponse } from '@adn/api';
 import { copy, fill } from '@adn/copy';
 import { describe, expect, it, vi } from 'vitest';
 import { stepOptions } from '../src/flow/options';
+import { ApiError } from '../src/lib/api';
 import {
   advanceTo,
   analysis,
@@ -459,6 +461,161 @@ describe('typed text', () => {
   });
 });
 
+describe('short answers typed instead of tapped', () => {
+  it('"yes" and "no" answer "Did you mean…?"', async () => {
+    const h = harness({ interpret: vi.fn(() => Promise.resolve(option('GA'))) });
+    await advanceTo(h, 'location');
+    h.controller.say('I live in Atlanta');
+    await h.settle();
+    expect(h.state().confirm?.optionId).toBe('GA');
+    h.controller.say('Yes please!');
+    await h.settle();
+    expect(h.state().step).toBe('county');
+    expect(h.state().answers.state).toBe('GA');
+    expect(h.api.interpret).toHaveBeenCalledTimes(1);
+
+    const no = harness({ interpret: vi.fn(() => Promise.resolve(option('GA'))) });
+    await advanceTo(no, 'location');
+    no.controller.say('I live in Atlanta');
+    await no.settle();
+    no.controller.say('nope');
+    await no.settle();
+    expect(no.state().step).toBe('location');
+    expect(no.state().confirm).toBeNull();
+    expect(no.texts().slice(-2)).toEqual(['No', copy.fallback.pickInstead]);
+  });
+
+  it('"yes" answers "That sounds like … Is that right?"', async () => {
+    const h = harness({
+      county: vi.fn(() =>
+        Promise.resolve({
+          countyFips: '13067',
+          countyName: 'Cobb County',
+          confidence: 'high' as const,
+          reply: '',
+          safety: false,
+          source: 'ai' as const,
+        }),
+      ),
+    });
+    await advanceTo(h, 'county');
+    h.controller.choose('not_sure');
+    await h.settle();
+    h.controller.say('Marietta');
+    await h.settle();
+    expect(h.state().step).toBe('county_confirm');
+    h.controller.say('yeah');
+    await h.settle();
+    expect(h.state().step).toBe('stage');
+    expect(h.state().answers.countyFips).toBe('13067');
+  });
+
+  it('a longer reply that starts with "yes" is still read as a message', async () => {
+    const h = harness({ interpret: vi.fn(() => Promise.resolve(option('GA'))) });
+    await advanceTo(h, 'location');
+    h.controller.say('I live in Atlanta');
+    await h.settle();
+    h.controller.say('yes but I moved to Cobb');
+    await h.settle();
+    expect(h.api.interpret).toHaveBeenCalledTimes(2);
+  });
+
+  it('"skip", "no" or "none" at the situation step skips it, rather than becoming the situation', async () => {
+    for (const reply of ['skip', 'No', 'none.', 'nothing', 'N/A', 'not really', 'no thanks']) {
+      const h = harness();
+      await advanceTo(h, 'situation');
+      h.controller.say(reply);
+      await h.settle();
+      expect(h.state().step, reply).toBe('category');
+      expect(h.state().texts, reply).toEqual([]);
+      expect(h.api.situation, reply).not.toHaveBeenCalled();
+    }
+    // Anything with substance is still the situation.
+    const h = harness();
+    await advanceTo(h, 'situation');
+    h.controller.say('no kids, we just need the paperwork done');
+    await h.settle();
+    expect(h.state().texts).toEqual(['no kids, we just need the paperwork done']);
+  });
+});
+
+describe('a typed county name', () => {
+  const exact = (optionId: string) => option(optionId, { source: 'exact' });
+
+  it('is only accepted straight away when it says "County": "Houston" may be the city', async () => {
+    const bare = harness({ interpret: vi.fn(() => Promise.resolve(exact('13067'))) });
+    await advanceTo(bare, 'county');
+    bare.controller.say('Cobb');
+    await bare.settle();
+    expect(bare.state().step).toBe('county');
+    expect(bare.state().confirm).toEqual({
+      step: 'county',
+      optionId: '13067',
+      label: 'Cobb County',
+    });
+    expect(bare.texts().at(-1)).toBe(fill(copy.fallback.didYouMean, { label: 'Cobb County' }));
+
+    const full = harness({ interpret: vi.fn(() => Promise.resolve(exact('13067'))) });
+    await advanceTo(full, 'county');
+    full.controller.say('cobb county');
+    await full.settle();
+    expect(full.state().confirm).toBeNull();
+    expect(full.state().step).toBe('stage');
+    expect(full.state().answers.countyFips).toBe('13067');
+  });
+
+  it('is still accepted straight away for the other steps’ exact matches', async () => {
+    const h = harness({ interpret: vi.fn(() => Promise.resolve(exact('GA'))) });
+    await advanceTo(h, 'location');
+    h.controller.say('Georgia');
+    await h.settle();
+    expect(h.state().step).toBe('county');
+  });
+});
+
+describe('typed categories', () => {
+  it('any kind of professional can be typed at the category step, even from "More options"', async () => {
+    const h = harness({ interpret: vi.fn(() => Promise.resolve(option('arbitrator'))) });
+    await advanceTo(h, 'category');
+    h.controller.say('arbitrator');
+    await h.settle();
+    expect(h.state().confirm).toEqual({
+      step: 'category',
+      optionId: 'arbitrator',
+      label: copy.categories.arbitrator,
+    });
+    h.controller.confirmAnswer(true);
+    await h.settle();
+    expect(h.state().step).toBe('results');
+    expect(h.state().answers.category).toBe('arbitrator');
+    expect(h.api.match).toHaveBeenCalledWith(expect.objectContaining({ category: 'arbitrator' }));
+  });
+
+  it('and a main kind typed at "More options", or any kind typed when not sure', async () => {
+    const more = harness({ interpret: vi.fn(() => Promise.resolve(option('attorney'))) });
+    await advanceTo(more, 'category');
+    more.controller.choose('more');
+    await more.settle();
+    expect(more.state().step).toBe('category_more');
+    more.controller.say('a divorce lawyer');
+    await more.settle();
+    expect(more.state().confirm?.optionId).toBe('attorney');
+    expect(more.state().confirm?.label).toBe(copy.categories.attorney);
+
+    const help = harness({ interpret: vi.fn(() => Promise.resolve(option('mediator'))) });
+    await advanceTo(help, 'category');
+    help.controller.choose('not_sure');
+    await help.settle();
+    expect(help.state().step).toBe('category_help');
+    help.controller.say('mediator');
+    await help.settle();
+    expect(help.state().confirm?.optionId).toBe('mediator');
+    help.controller.confirmAnswer(true);
+    await help.settle();
+    expect(help.state().answers.category).toBe('mediator');
+  });
+});
+
 describe('the visitor’s situation, from any step', () => {
   const situation = 'My husband and I decided to split. We have two kids and want to keep it civil';
 
@@ -770,12 +927,109 @@ describe('Back and Start over', () => {
   it('keeps what was typed in the contact form when going back and forward again', async () => {
     const h = harness();
     await advanceTo(h, 'contact');
-    h.controller.saveDraft({ ...validContact, firstName: 'Typed' });
+    h.controller.saveDraft({ ...validContact, firstName: 'Typed', consent: true });
     h.controller.back();
+    expect(h.state().step).toBe('results');
     h.controller.contactSelected();
     await h.settle();
-    // Going forward again starts a new form; going back to it (from done) would restore the draft.
     expect(h.state().step).toBe('contact');
+    expect(h.state().form?.values).toMatchObject({
+      firstName: 'Typed',
+      lastName: 'Doe',
+      email: 'jane@example.org',
+      message: 'We want to keep this civil.',
+    });
+    // Agreeing to share details is asked again: the selection may have changed.
+    expect(h.state().form?.values.consent).toBe(false);
+  });
+
+  it('starts a new, empty form after Start over', async () => {
+    const h = harness();
+    await advanceTo(h, 'contact');
+    h.controller.saveDraft({ ...validContact, firstName: 'Typed' });
+    h.controller.restart();
+    await h.settle();
+    for (const id of ['divorce', 'GA', '13121', 'ready', 'skip', 'attorney']) {
+      h.controller.choose(id);
+      await h.settle();
+    }
+    h.controller.toggleSelected('p1');
+    h.controller.contactSelected();
+    await h.settle();
+    expect(h.state().step).toBe('contact');
+    expect(h.state().form?.values.firstName).toBe('');
+    expect(h.state().form?.values.email).toBe('');
+  });
+
+  it('starts a new form for the next request once one has been sent', async () => {
+    const h = harness();
+    await advanceTo(h, 'contact');
+    h.controller.submitForm(validContact);
+    await h.settle();
+    expect(h.state().step).toBe('done');
+    h.controller.choose('mediator');
+    await h.settle();
+    expect(h.state().step).toBe('results');
+    h.controller.toggleSelected('p1');
+    h.controller.contactSelected();
+    await h.settle();
+    expect(h.state().form?.values.firstName).toBe('');
+  });
+
+  it('cannot go Back or Start over while the form is being sent, nor Back from the confirmation', async () => {
+    let finish: (value: LeadResponse) => void = () => {};
+    const h = harness({
+      lead: vi.fn(
+        () =>
+          new Promise<LeadResponse>((resolve) => {
+            finish = resolve;
+          }),
+      ),
+    });
+    await advanceTo(h, 'contact');
+    expect(h.controller.canGoBack).toBe(true);
+    expect(h.controller.canRestart).toBe(true);
+
+    h.controller.submitForm(validContact);
+    expect(h.state().form?.submitting).toBe(true);
+    expect(h.controller.canGoBack).toBe(false);
+    expect(h.controller.canRestart).toBe(false);
+    h.controller.back();
+    h.controller.restart();
+    expect(h.state().step).toBe('contact');
+    expect(h.state().form?.submitting).toBe(true);
+
+    finish({ ok: true, contacted: ['Pro p1'], safety: false });
+    await h.settle();
+    expect(h.state().step).toBe('done');
+    // The request has been sent: going back would offer to send it again.
+    expect(h.controller.canGoBack).toBe(false);
+    expect(h.controller.canRestart).toBe(true);
+    h.controller.back();
+    expect(h.state().step).toBe('done');
+  });
+
+  it('keeps the safety card at the top after Start over, and Back is not offered at the first step', async () => {
+    const h = harness({
+      interpret: vi.fn(() => Promise.resolve(option('divorce', { safety: true }))),
+    });
+    h.controller.start();
+    await h.settle();
+    expect(h.controller.canGoBack).toBe(false);
+    h.controller.say('my husband hits me');
+    await h.settle();
+    expect(h.texts().filter((text) => text === '[safety card]')).toHaveLength(1);
+
+    h.controller.restart();
+    await h.settle();
+    expect(h.texts()[0]).toBe('[safety card]');
+    expect(h.texts().filter((text) => text === '[safety card]')).toHaveLength(1);
+    expect(h.state().step).toBe('welcome');
+    // Only the card and the welcome message: nothing to undo.
+    expect(h.controller.canGoBack).toBe(false);
+    h.controller.back();
+    await h.settle();
+    expect(h.texts().filter((text) => text === '[safety card]')).toHaveLength(1);
   });
 
   it('forgets the situation that was shared after the step being returned to', async () => {
@@ -811,7 +1065,7 @@ describe('Back and Start over', () => {
     expect(h.state().step).toBe('welcome');
   });
 
-  it('Start over clears the answers but not the fact that the safety card was shown', async () => {
+  it('Start over clears the answers, but the safety card stays at the top (and is not shown twice)', async () => {
     const h = harness();
     await advanceTo(h, 'stage');
     h.api.interpret.mockResolvedValueOnce({ ...unclear, safety: true });
@@ -822,8 +1076,12 @@ describe('Back and Start over', () => {
     expect(h.state().step).toBe('welcome');
     expect(h.state().answers.state).toBeNull();
     expect(h.state().history).toEqual([]);
-    expect(h.texts()).toEqual([copy.steps.welcome.message]);
+    expect(h.texts()).toEqual(['[safety card]', copy.steps.welcome.message]);
     expect(h.state().safetyShown).toBe(true);
+    h.api.interpret.mockResolvedValueOnce({ ...unclear, safety: true });
+    h.controller.say('he threatens me again');
+    await h.settle();
+    expect(h.texts().filter((text) => text === '[safety card]')).toHaveLength(1);
   });
 
   it('drops a late answer from the server when the visitor has already moved on', async () => {
@@ -932,6 +1190,61 @@ describe('when something goes wrong', () => {
     h.controller.submitForm(validContact);
     await h.settle();
     expect(h.texts()).toContain('[safety card]');
+  });
+});
+
+describe('the server rejecting the form', () => {
+  it('shows which fields the server did not accept, not just "didn’t go through"', async () => {
+    const h = harness({
+      lead: vi.fn(() =>
+        Promise.reject(new ApiError(400, 'validation_failed', ['email', 'message'])),
+      ),
+    });
+    await advanceTo(h, 'contact');
+    h.controller.submitForm(validContact);
+    await h.settle();
+    expect(h.state().step).toBe('contact');
+    expect(h.state().form).toMatchObject({
+      submitting: false,
+      error: null,
+      serverFields: ['email', 'message'],
+    });
+
+    // Sending again clears the marks.
+    h.api.lead.mockImplementation((request) =>
+      Promise.resolve({ ok: true as const, contacted: request.memberIds, safety: false }),
+    );
+    h.controller.submitForm({ ...validContact, email: 'jane@example.com' });
+    await h.settle();
+    expect(h.state().step).toBe('done');
+  });
+
+  it('says to try later when the hourly limit for sending is reached', async () => {
+    const h = harness({ lead: vi.fn(() => failure(429, 'rate_limited')) });
+    await advanceTo(h, 'contact');
+    h.controller.submitForm(validContact);
+    await h.settle();
+    expect(h.state().form?.error).toBe(copy.form.rateLimited);
+  });
+
+  it('does not name nobody when the server sent to no one (the trap field was filled)', async () => {
+    const h = harness({
+      lead: vi.fn(() => Promise.resolve({ ok: true as const, contacted: [], safety: false })),
+    });
+    await advanceTo(h, 'contact');
+    h.controller.submitForm(validContact);
+    await h.settle();
+    expect(h.texts()).toContain(copy.steps.done.messageNoNames);
+    expect(h.texts().join(' ')).not.toContain('went to .');
+  });
+
+  it('still shows the general message for any other failure', async () => {
+    const h = harness({ lead: vi.fn(() => failure(500, 'server_error')) });
+    await advanceTo(h, 'contact');
+    h.controller.submitForm(validContact);
+    await h.settle();
+    expect(h.state().form?.error).toBe(copy.form.submitError);
+    expect(h.state().form?.serverFields).toBeUndefined();
   });
 });
 

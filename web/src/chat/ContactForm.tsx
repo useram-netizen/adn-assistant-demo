@@ -1,8 +1,10 @@
 import { copy } from '@adn/copy';
-import { useId, useRef, useState, type FormEvent } from 'react';
+import { useEffect, useId, useRef, useState, type FormEvent } from 'react';
 import {
   MESSAGE_MAX,
   NAME_MAX,
+  contactFieldsOf,
+  serverFieldErrors,
   validateContact,
   type ContactErrors,
   type ContactField,
@@ -53,6 +55,23 @@ export function ContactForm({
   const [attempted, setAttempted] = useState(false);
   const formRef = useRef<HTMLFormElement>(null);
   const tracy = form.kind === 'tracy';
+
+  // The server did not accept some fields (it checks more strictly than we do): mark them like
+  // our own checks do, and take the visitor to the first one.
+  const [markedFor, setMarkedFor] = useState(form.serverFields);
+  const [focusRequest, setFocusRequest] = useState<{ field: ContactField } | null>(null);
+  if (form.serverFields && form.serverFields !== markedFor) {
+    const rejected = contactFieldsOf(form.serverFields);
+    const first = FIELD_ORDER.find((field) => rejected.includes(field));
+    setMarkedFor(form.serverFields);
+    setErrors(serverFieldErrors(form.serverFields));
+    setAttempted(true);
+    setFocusRequest(first ? { field: first } : null);
+  }
+  useEffect(() => {
+    if (!focusRequest) return;
+    formRef.current?.querySelector<HTMLElement>(`[data-field="${focusRequest.field}"]`)?.focus();
+  }, [focusRequest]);
 
   const change = <K extends keyof ContactValues>(field: K, value: ContactValues[K]) => {
     const next = { ...values, [field]: value };
