@@ -37,6 +37,7 @@ export function Composer({
 }: ComposerProps) {
   const [text, setText] = useState('');
   const inputId = useId();
+  const hintId = `${inputId}-hint`;
   const canSend = !disabled && !busy && text.trim().length > 0;
 
   const fitHeight = (textarea: HTMLTextAreaElement) => {
@@ -91,6 +92,7 @@ export function Composer({
           maxLength={MAX_TEXT_LENGTH}
           placeholder={placeholder}
           autoComplete="off"
+          aria-describedby={hintId}
           value={text}
           disabled={disabled}
           onChange={(event) => {
@@ -108,6 +110,9 @@ export function Composer({
           <SendIcon />
         </button>
       </form>
+      <p className="adn-input-hint" id={hintId} hidden={hideText}>
+        {copy.widget.inputHint}
+      </p>
     </div>
   );
 }

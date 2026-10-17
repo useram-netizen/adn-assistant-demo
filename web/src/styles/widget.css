@@ -357,8 +357,16 @@ body {
 }
 
 /* display:flex would otherwise win over the hidden attribute (the form is showing). */
-.adn-text-row[hidden] {
+.adn-text-row[hidden],
+.adn-input-hint[hidden] {
   display: none;
+}
+
+.adn-input-hint {
+  margin: 4px 4px 0;
+  color: var(--adn-text-muted);
+  font-size: 12px;
+  line-height: 1.4;
 }
 
 .adn-text-row {

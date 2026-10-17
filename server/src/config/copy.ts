@@ -27,6 +27,8 @@ export const copy = {
     startOver: 'Start over',
     inputLabel: 'Type a message',
     inputPlaceholder: 'Type a message…',
+    /** Under the text box: what is typed here goes to an AI, so no personal details. */
+    inputHint: "Please don't type names or contact details here.",
     send: 'Send',
     opensInNewTab: '(opens in a new tab)',
     loadError:
