@@ -35,7 +35,7 @@ docs/SPEC.md is the source of truth for behaviour; this file explains how it is 
 
 Logs never contain visitor names, emails, phone numbers or chat text. Log ids, codes, counts and timings only, and use `redact()` for third-party error text.
 
-## Layout and ownership
+## Layout
 
 ```
 server/src/
@@ -47,22 +47,22 @@ server/src/
   domain/types.ts                   Member, Lead, Store, Mailer, … interfaces
   security/                         headers, embed origins, rateLimit + clientIp
   safety/keywords.ts                matchesSafetyKeywords(text)
-  geo/                              states + counties (Geo)                 [data]
+  geo/                              states + counties (Geo)
   members/                          import rules, report, matching, cards,
-                                    MemberDirectory, file reading (CSV/XLSX) [data]
-  cli/import.ts                     npm run import -- <file>                [data]
-  routes/geo.ts, routes/match.ts    GET /states, /counties; POST /match     [data]
+                                    MemberDirectory, file reading (CSV/XLSX)
+  cli/import.ts                     npm run import -- <file>
+  routes/geo.ts, routes/match.ts    GET /states, /counties; POST /match
   storage/                          FileStore, MongoStore, ResilientStore,
-                                    MemoryStore (tests), createStore()      [store]
-  events/                           event schemas, EventSink                [store]
-  routes/events.ts, routes/admin.ts POST /events; GET /admin/*              [store]
-  jobs/retention.ts                 LEAD_RETENTION_DAYS purge               [store]
-  email/                            templates, createMailer()               [mail]
-  leads/                            lead + Tracy services, retries          [mail]
-  routes/leads.ts                   POST /leads, /contact-tracy             [mail]
-  ai/                               OpenAI client, system prompt, 4 calls   [ai]
-  routes/ai.ts                      POST /ai/interpret|county|situation|recommend [ai]
-web/src/                            the chat widget                         [widget]
+                                    MemoryStore (tests), createStore()
+  events/                           event schemas, EventSink
+  routes/events.ts, routes/admin.ts POST /events; GET /admin/*
+  jobs/retention.ts                 LEAD_RETENTION_DAYS purge
+  email/                            templates, createMailer()
+  leads/                            lead + Tracy services, retries
+  routes/leads.ts                   POST /leads, /contact-tracy
+  ai/                               OpenAI client, system prompt, 4 calls
+  routes/ai.ts                      POST /ai/interpret|county|situation|recommend
+web/src/                            the chat widget
 ```
 
 Conventions:
@@ -93,7 +93,7 @@ adminRouter({ config, store, directory }): Router           // GET /admin/stats,
   - `createMailer(config)`
   - `createAiClient(config)`, which is null when the AI is off or there is no key
 
-## Data: geo, import, matching [data]
+## Data: geo, import, matching
 
 - **Geo:** loads `data/us-counties-2020.csv` (state, fips, name, aliases separated by "|") and the 50 states + DC (USPS code, name).
   - `shortCountyName` drops a trailing " County" or " Parish" ("Fulton County" → "Fulton"; "Baltimore city" stays as it is).
@@ -125,7 +125,7 @@ adminRouter({ config, store, directory }): Router           // GET /admin/stats,
   - NV Clark (32003) attorney: 0/1/8
   - WY Teton (56039) attorney: no match
 
-## Storage, events, admin [store]
+## Storage, events, admin
 
 - **`createStore(config)`:**
   - With `MONGODB_URI`: a `ResilientStore` that tries MongoDB (official driver, short timeouts, lazy connect, indexes) and falls back to the file store on any error, logging `storage_fallback` with no personal data.
@@ -142,7 +142,7 @@ adminRouter({ config, store, directory }): Router           // GET /admin/stats,
   - `GET /admin/gaps.csv`: no-match searches grouped by state, county and category, with counts.
 - **Retention:** with `LEAD_RETENTION_DAYS`, delete older leads daily.
 
-## Email and leads [mail]
+## Email and leads
 
 - **`createMailer(config)`:**
   - preview: writes the HTML (with To, Reply-To and Subject at the top) to `config.paths.mailPreviewDir`. Nothing is sent.
@@ -169,7 +169,7 @@ adminRouter({ config, store, directory }): Router           // GET /admin/stats,
   - If `TRACY_EMAIL` is unset, preview and redirect still produce the email; live mode logs `tracy_email_unset` and marks the recipient as failed.
 - **Events and limits:** record `lead_submitted` or `tracy_form_submitted`. Rate limit 5 per hour per IP for each route.
 
-## AI [ai]
+## AI
 
 - **Client:**
   - OpenAI Responses API with Structured Outputs (`text.format: { type: 'json_schema', strict: true }`).
@@ -203,7 +203,9 @@ adminRouter({ config, store, directory }): Router           // GET /admin/stats,
   - recommend → empty recommendations
 - **Privacy:** before sending, replace emails with `[email]` and phone numbers with `[phone]`. The AI module never sees contact form data.
 
-## Widget conversation design [widget]
+## Widget conversation design
+
+The whole conversation is `ChatController` (web/src/flow/controller.ts): plain TypeScript with no React in it, so the flow is tested without a browser (web/test/controller.test.ts uses a fake server). The React components only show its state and call its actions. Work that takes time (typing pauses, server calls) runs under an "epoch": Back, Start over and failures start a new epoch, so a late answer from the server can never land on a screen the visitor has left. Back restores a snapshot of the earlier step (its answers, transcript length, situation text, results and form draft).
 
 State lives in memory only.
 
@@ -260,3 +262,7 @@ Steps (bot message from copy → input):
   - Forms have labels, `aria-invalid`, error text tied with `aria-describedby`, and focus moves to the first error.
   - Focus moves to the new input after each step, but never on page load.
 - **Embedding:** keep ChatLayout's height reporting and scroll handling.
+
+## Status (2026-10-17)
+
+M2 to M5 are built and deployed, with `EMAIL_MODE=preview`. Everything in this file is implemented; the OPEN items (wording, links, Tracy's address, brand colours, retention) use the defaults in config. Tests: about 430 unit and API tests (`npm test`) and the Playwright browser tests (`npm run test:e2e`).
