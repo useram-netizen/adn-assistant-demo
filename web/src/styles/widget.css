@@ -89,6 +89,9 @@ body {
 /* ---------------------------------------------------------------- Frame */
 
 .adn-shell {
+  /* The containing block for the absolutely placed screen-reader text and bot trap, so that
+     overflow: hidden clips them: without it they stretch the page and it scrolls away. */
+  position: relative;
   display: flex;
   flex-direction: column;
   height: 100%;
@@ -159,8 +162,14 @@ body {
   flex: 1 1 auto;
   min-height: 0;
   overflow-y: auto;
-  overscroll-behavior: contain;
+  /* In an inline iframe the host page takes over at the end of the list. */
+  overscroll-behavior-y: auto;
   scroll-behavior: smooth;
+}
+
+/* The bubble's panel is a dialog: scrolling stays inside it. */
+.adn-shell[data-mode='bubble'] .adn-log {
+  overscroll-behavior-y: contain;
 }
 
 .adn-log:focus {
@@ -173,10 +182,13 @@ body {
 }
 
 .adn-log-content {
+  /* Room at the sides, and more where a notch or rounded screen corner needs it. */
+  --adn-gutter: 16px;
   display: flex;
   flex-direction: column;
   gap: 10px;
-  padding: 16px;
+  padding: var(--adn-gutter) max(var(--adn-gutter), env(safe-area-inset-right)) var(--adn-gutter)
+    max(var(--adn-gutter), env(safe-area-inset-left));
 }
 
 .adn-msg {
@@ -184,7 +196,8 @@ body {
   padding: 10px 14px;
   border-radius: var(--adn-radius-lg);
   overflow-wrap: anywhere;
-  white-space: pre-wrap;
+  /* Line breaks stay; the space after the screen-reader label does not indent the line. */
+  white-space: pre-line;
 }
 
 .adn-msg--bot {
@@ -433,7 +446,7 @@ body {
 }
 
 .adn-footer {
-  padding: 6px 12px 10px;
+  padding: 6px 12px max(10px, env(safe-area-inset-bottom));
   color: var(--adn-text-muted);
   font-size: 12px;
   line-height: 1.45;
@@ -458,7 +471,7 @@ body {
 
 @media (min-width: 480px) {
   .adn-log-content {
-    padding: 20px;
+    --adn-gutter: 20px;
   }
 
   .adn-header {
@@ -617,6 +630,7 @@ body {
 }
 
 .adn-combo-list {
+  position: relative;
   max-height: 232px;
   margin: 0;
   padding: 4px;
@@ -641,6 +655,9 @@ body {
 .adn-combo-option[data-active='true'] {
   color: var(--adn-text);
   background: var(--adn-accent-soft);
+  /* A ring, not just a tint: the tint alone is 1.25:1 against white (WCAG 1.4.11). */
+  outline: 2px solid var(--adn-accent);
+  outline-offset: -2px;
 }
 
 .adn-combo-empty {
@@ -866,6 +883,12 @@ body {
   font-weight: 600;
 }
 
+.adn-field > label.adn-radio,
+.adn-field > label.adn-checkbox {
+  font-size: 16px;
+  font-weight: 400;
+}
+
 .adn-field input[type='text'],
 .adn-field input[type='email'],
 .adn-field input[type='tel'],
@@ -940,15 +963,21 @@ body {
   overflow: hidden;
 }
 
-/* ---------------------------------------------------------------- Short screens */
+/* ---------------------------------------------------------------- Short and narrow screens */
 
-@media (max-height: 520px) {
+/*
+ * Below 560 px high (a phone turned sideways, a page zoomed in to 200% or more): less pinned
+ * chrome, and the contact button scrolls with the list instead of covering it, so every card
+ * can be reached.
+ */
+@media (max-height: 560px) {
   .adn-header {
     padding-top: 6px;
     padding-bottom: 6px;
   }
 
-  .adn-subtitle {
+  .adn-subtitle,
+  .adn-input-hint {
     display: none;
   }
 
@@ -971,6 +1000,66 @@ body {
 
   .adn-footer {
     padding-top: 2px;
-    padding-bottom: 6px;
+    padding-bottom: max(6px, env(safe-area-inset-bottom));
+  }
+
+  .adn-contact-bar {
+    position: static;
+    margin: 0;
+    padding: 0;
+    background: none;
+  }
+}
+
+/* A page zoomed in to 400% is about 320 x 200: the title and the controls only. */
+@media (max-height: 380px) {
+  .adn-logo {
+    display: none;
+  }
+
+  .adn-header {
+    padding-top: 4px;
+    padding-bottom: 4px;
+  }
+
+  .adn-footer {
+    font-size: 11px;
+    line-height: 1.3;
+  }
+}
+
+/* Narrow phones, and large text on them: the title gets the whole width. */
+@media (max-width: 360px) {
+  .adn-logo,
+  .adn-input-hint {
+    display: none;
+  }
+
+  .adn-header {
+    padding-left: 12px;
+    padding-right: 12px;
+  }
+}
+
+/* Windows high-contrast and similar modes replace colours: show states with outlines. */
+@media (forced-colors: active) {
+  .adn-typing-dot {
+    background: CanvasText;
+  }
+
+  .adn-combo-option[data-active='true'] {
+    outline: 2px solid Highlight;
+  }
+
+  .adn-card[data-selected='true'],
+  .adn-select[aria-pressed='true'] {
+    outline: 3px solid Highlight;
+    outline-offset: 1px;
+  }
+
+  .adn-msg--visitor,
+  .adn-tag,
+  .adn-badge {
+    border: 1px solid CanvasText;
   }
 }

@@ -45,6 +45,18 @@ export function Combobox({
     }
   }, [active, open]);
 
+  // Opening the list scrolls the conversation just far enough to show it, keeping the box in view.
+  useEffect(() => {
+    if (!open) return;
+    const list = listRef.current;
+    const input = list?.previousElementSibling;
+    const log = list?.closest<HTMLElement>('.adn-log');
+    if (!list || !input || !log) return;
+    const hidden = list.getBoundingClientRect().bottom - log.getBoundingClientRect().bottom;
+    const room = input.getBoundingClientRect().top - log.getBoundingClientRect().top - 8;
+    if (hidden > 0) log.scrollTop += Math.min(hidden + 8, Math.max(room, 0));
+  }, [open]);
+
   const choose = (option: ComboOption) => {
     setOpen(false);
     setText('');

@@ -1,5 +1,6 @@
 import type { ProfessionalCard } from '@adn/api';
 import { copy, fill } from '@adn/copy';
+import { useEffect, useRef } from 'react';
 import { MAX_SELECTED, type ResultsState } from '../flow/types';
 
 interface ResultCardsProps {
@@ -25,11 +26,11 @@ function Card({
   return (
     <li className="adn-card" data-tier={card.tier} data-selected={selected}>
       <div className="adn-card-main">
-        <h3 className="adn-card-name">{card.name}</h3>
+        <h2 className="adn-card-name">{card.name}</h2>
         <p className="adn-card-labels">{card.labels.join(' · ')}</p>
         <p className="adn-card-area">{card.serviceArea}</p>
         {card.badges.length > 0 && (
-          <ul className="adn-badges" aria-label="Badges">
+          <ul className="adn-badges" aria-label={copy.cards.badgesLabel}>
             {card.badges.map((badge) => (
               <li key={badge} className={`adn-badge adn-badge--${badge}`}>
                 {copy.cards.badges[badge]}
@@ -68,10 +69,24 @@ export function ResultCards({
   const { cards, shown, selected } = results;
   const visible = cards.slice(0, shown);
   const limitReached = selected.length >= MAX_SELECTED;
+  const listRef = useRef<HTMLUListElement>(null);
+  // "Show more" moves the focus to the first card it added, which would otherwise be left behind.
+  const focusFrom = useRef<number | null>(null);
+  useEffect(() => {
+    const index = focusFrom.current;
+    if (index === null || visible.length <= index) return;
+    focusFrom.current = null;
+    const card = listRef.current?.children[index];
+    const log = card?.closest<HTMLElement>('.adn-log');
+    card?.querySelector<HTMLElement>('button')?.focus({ preventScroll: true });
+    if (card && log) {
+      log.scrollTop += card.getBoundingClientRect().top - log.getBoundingClientRect().top - 8;
+    }
+  }, [visible.length]);
 
   return (
     <div className="adn-results">
-      <ul className="adn-cards" aria-labelledby={labelledBy}>
+      <ul className="adn-cards" aria-labelledby={labelledBy} ref={listRef}>
         {visible.map((card) => (
           <Card
             key={card.id}
@@ -83,7 +98,14 @@ export function ResultCards({
         ))}
       </ul>
       {shown < cards.length && (
-        <button type="button" className="adn-more" onClick={onShowMore}>
+        <button
+          type="button"
+          className="adn-more"
+          onClick={() => {
+            focusFrom.current = visible.length;
+            onShowMore();
+          }}
+        >
           {copy.steps.results.showMore}
         </button>
       )}

@@ -65,7 +65,8 @@
         src: BASE + '/widget?site=' + encodeURIComponent(o.site) + '&mode=' + mode,
         title: C.t.title,
       },
-      'display:block;width:100%',
+      // color-scheme: light, so a dark host page doesn't put a white box behind the rounded corners.
+      'display:block;width:100%;color-scheme:light',
     );
     frames.push({ f: f, on: onMessage });
     return f;

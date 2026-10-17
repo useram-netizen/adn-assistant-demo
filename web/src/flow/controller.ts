@@ -468,8 +468,13 @@ export class ChatController {
       return;
     }
 
+    // After the safety card, "I didn't catch that" would be the wrong thing to say.
     const hasInput = step !== 'pro_info' && step !== 'uk';
-    const unclear = hasInput ? copy.fallback.didNotCatch : copy.fallback.didNotCatchNoOptions;
+    const unclear = result.safety
+      ? copy.safety.continue
+      : hasInput
+        ? copy.fallback.didNotCatch
+        : copy.fallback.didNotCatchNoOptions;
     if (!(await this.botSays([unclear], epoch))) return;
     await this.refreshAnalysisAfterSharing(step, epoch);
   }

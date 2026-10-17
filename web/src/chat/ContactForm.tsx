@@ -252,7 +252,7 @@ export function ContactForm({
           {copy.form.honeypot}
           <input
             type="text"
-            name="company_fax"
+            name="website"
             tabIndex={-1}
             autoComplete="off"
             value={values.trap}

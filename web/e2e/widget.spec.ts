@@ -58,7 +58,8 @@ test('replies to typed text with the fallback message and the buttons', async ({
 
 test('shows the footer on every screen', async ({ page }) => {
   await page.goto('/widget?site=divorceamicably');
-  const footer = page.getByRole('contentinfo');
+  // The footer sits inside <main>, so it is not a landmark of its own.
+  const footer = page.locator('footer');
   await expect(footer).toContainText(
     `${copy.footer.automated} · ${copy.footer.disclaimer} · ${copy.footer.privacy}`,
   );
@@ -133,4 +134,152 @@ test('sends the embedding headers', async ({ request }) => {
   const script = await request.get(`${WIDGET_ORIGIN}/embed.js`);
   expect((await script.body()).byteLength).toBeLessThan(5 * 1024);
   expect(script.headers()['cross-origin-resource-policy']).toBe('cross-origin');
+});
+
+/** Walks the widget page to the results for Georgia, Fulton County, divorce attorneys (35 cards). */
+async function toResults(page: Page) {
+  await page.goto('/widget?site=divorceamicably');
+  await page.getByRole('button', { name: welcome.optionDivorce }).click();
+  const state = page.getByRole('combobox', { name: 'Your state' });
+  await state.fill('Geor');
+  await page.getByRole('option', { name: 'Georgia', exact: true }).click();
+  await page.getByRole('combobox', { name: 'Your county' }).fill('fulton');
+  await page.getByRole('option', { name: 'Fulton County', exact: true }).click();
+  await page.getByRole('button', { name: copy.steps.stage.options.ready }).click();
+  await page.getByRole('button', { name: copy.steps.situation.skip }).click();
+  await page.getByRole('button', { name: 'Divorce attorney' }).click();
+  await expect(page.locator('.adn-card').first()).toBeVisible();
+}
+
+test.describe('the widget page and its conversation (UX review)', () => {
+  test('only the conversation scrolls: the widget page itself never does', async ({ page }) => {
+    await toResults(page);
+    const sizes = await page.evaluate(() => ({
+      scroll: document.documentElement.scrollHeight,
+      client: document.documentElement.clientHeight,
+    }));
+    // Screen-reader-only text lies low in the list: it must not stretch the page.
+    expect(sizes.scroll).toBeLessThanOrEqual(sizes.client + 1);
+  });
+
+  test('the county list opens at the top, with the highlighted option in view', async ({
+    page,
+  }) => {
+    await page.goto('/widget?site=divorceamicably');
+    await page.getByRole('button', { name: welcome.optionDivorce }).click();
+    await page.getByRole('combobox', { name: 'Your state' }).fill('Texas');
+    await page.getByRole('option', { name: 'Texas', exact: true }).click();
+    await page.getByRole('combobox', { name: 'Your county' }).click();
+    await expect(page.getByRole('option')).toHaveCount(254);
+
+    const inView = () =>
+      page.evaluate(() => {
+        const list = document.querySelector('.adn-combo-list')!;
+        const active = list.querySelector('[data-active="true"]')!;
+        const l = list.getBoundingClientRect();
+        const a = active.getBoundingClientRect();
+        return {
+          scrollTop: list.scrollTop,
+          visible: a.top >= l.top - 1 && a.bottom <= l.bottom + 1,
+        };
+      });
+    expect(await inView()).toEqual({ scrollTop: 0, visible: true });
+    for (let i = 0; i < 15; i += 1) await page.keyboard.press('ArrowDown');
+    expect((await inView()).visible).toBe(true);
+    // The highlight is an outline as well as a tint (a tint alone is too faint to count).
+    expect(
+      await page.evaluate(
+        () =>
+          getComputedStyle(document.querySelector('.adn-combo-option[data-active="true"]')!)
+            .outlineStyle,
+      ),
+    ).toBe('solid');
+  });
+
+  test('on a short or zoomed-in screen the contact button scrolls with the list, and every Select can be reached', async ({
+    page,
+  }) => {
+    await page.setViewportSize({ width: 320, height: 256 });
+    await toResults(page);
+    expect(
+      await page.evaluate(
+        () => getComputedStyle(document.querySelector('.adn-contact-bar')!).position,
+      ),
+    ).toBe('static');
+    const reached = await page.evaluate(() => {
+      const log = document.querySelector<HTMLElement>('.adn-log')!;
+      log.style.scrollBehavior = 'auto';
+      const buttons = [...document.querySelectorAll<HTMLElement>('.adn-select')];
+      let count = 0;
+      for (const button of buttons) {
+        let found = false;
+        for (let y = 0; y <= log.scrollHeight && !found; y += 20) {
+          log.scrollTop = y;
+          const r = button.getBoundingClientRect();
+          const l = log.getBoundingClientRect();
+          if (r.top >= l.top && r.bottom <= l.bottom) {
+            const hit = document.elementFromPoint(r.left + r.width / 2, r.top + r.height / 2);
+            found = hit === button || button.contains(hit);
+          }
+        }
+        if (found) count += 1;
+      }
+      return { buttons: buttons.length, count };
+    });
+    expect(reached.buttons).toBe(6);
+    expect(reached.count).toBe(6);
+  });
+
+  test('scrolling carries on to the host page in an inline embed, but stays in the bubble’s panel', async ({
+    page,
+  }) => {
+    const logOverscroll = () =>
+      page.evaluate(
+        () => getComputedStyle(document.querySelector('.adn-log')!).overscrollBehaviorY,
+      );
+    await page.goto('/widget?site=divorceamicably&mode=inline');
+    await expect(page.getByText(welcome.message)).toBeVisible();
+    expect(await logOverscroll()).toBe('auto');
+    await page.goto('/widget?site=divorceamicably&mode=bubble');
+    await expect(page.getByText(welcome.message)).toBeVisible();
+    expect(await logOverscroll()).toBe('contain');
+  });
+
+  test('"Show more" moves the focus to the first card it added', async ({ page }) => {
+    await toResults(page);
+    await page.getByRole('button', { name: copy.steps.results.showMore }).click();
+    const focus = await page.evaluate(() => {
+      const card = document.activeElement?.closest('.adn-card');
+      const cards = [...document.querySelectorAll('.adn-card')];
+      return { tag: document.activeElement?.tagName, index: card ? cards.indexOf(card) : -1 };
+    });
+    expect(focus).toEqual({ tag: 'BUTTON', index: 6 });
+  });
+
+  test('the text box has the focus where typing is the answer (a city or ZIP code)', async ({
+    page,
+  }) => {
+    await page.goto('/widget?site=divorceamicably');
+    await page.getByRole('button', { name: welcome.optionDivorce }).click();
+    await page.getByRole('combobox', { name: 'Your state' }).fill('Geor');
+    await page.getByRole('option', { name: 'Georgia', exact: true }).click();
+    await page.getByRole('button', { name: copy.steps.county.notSure }).click();
+    await expect(page.getByText(copy.steps.countyHelp.message)).toBeVisible();
+    await expect(page.getByRole('textbox', { name: copy.widget.inputLabel })).toBeFocused();
+  });
+
+  test('has one main landmark, and the cards’ names are headings under the title', async ({
+    page,
+  }) => {
+    await toResults(page);
+    expect(
+      await page.evaluate(() => ({
+        main: document.querySelectorAll('main').length,
+        h1: document.querySelectorAll('h1').length,
+        h3: document.querySelectorAll('h3').length,
+        cardNames: document.querySelectorAll('.adn-card h2').length,
+      })),
+    ).toEqual({ main: 1, h1: 1, h3: 0, cardNames: 6 });
+    await expectNoAxeViolations(page);
+  });
 });

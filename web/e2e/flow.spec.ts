@@ -384,7 +384,8 @@ test.describe('typed text (AI on)', () => {
     await expect(card).toContainText('988');
     await expect(chat.widget.getByRole('combobox', { name: 'Your state' })).toBeVisible();
     await chat.type('I am afraid for my life');
-    await expect(chat.widget.getByText(copy.fallback.didNotCatch)).toBeVisible();
+    // After the card, the assistant says it is there, not "I didn't catch that".
+    await expect(chat.widget.getByText(copy.safety.continue)).toBeVisible();
     await expect(chat.widget.getByRole('complementary', { name: copy.safety.title })).toHaveCount(
       1,
     );

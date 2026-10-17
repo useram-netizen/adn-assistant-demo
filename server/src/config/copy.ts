@@ -52,8 +52,6 @@ export const copy = {
     closeLabel: 'Close',
     /** The iframe title, read out by screen readers. Also used in the fallback iframe code. */
     frameTitle: 'Find a divorce professional',
-    /** Shown in the bubble panel for the moment before the widget appears. */
-    loading: 'Loading…',
   },
 
   /** Replies when typed text is a question, unclear, or needs confirming. */
@@ -78,6 +76,8 @@ export const copy = {
       { label: 'Text START to 88788', href: 'sms:88788?&body=START' },
       { label: 'Call or text 988', href: 'tel:988' },
     ],
+    /** After the card, when the assistant has nothing more specific to say, the conversation carries on. */
+    continue: 'I’m here whenever you’re ready. We can keep going when you are.',
   },
 
   steps: {
@@ -147,7 +147,7 @@ export const copy = {
         "If you'd like, tell me a little about your situation in a sentence or two… Please leave out names.",
       skip: 'Skip',
       /** The text box's hint at this step. */
-      placeholder: 'A sentence or two about your situation…',
+      placeholder: 'A sentence or two…',
       /** The acknowledgement when the AI is off or unavailable. */
       ack: 'Thank you for sharing that.',
     },
@@ -177,8 +177,6 @@ export const copy = {
       showMore: 'Show more',
       select: 'Select',
       selected: 'Selected',
-      /** Screen reader label of each card's toggle. */
-      selectNamed: 'Select {name}',
       contact: 'Contact selected ({n})',
       maxReached: 'You can select up to 5 professionals.',
       email: 'Email',
@@ -354,6 +352,8 @@ export const copy = {
       Paralegal: 'Paralegal',
       'Paralegal - Paralegal Document Preparer': 'Document preparer',
     },
+    /** Screen reader label of a card's list of badges. */
+    badgesLabel: 'Badges',
     badges: {
       platinum: 'Platinum Member',
       gold: 'Gold Member',
@@ -380,7 +380,6 @@ export const copy = {
     consent: 'I agree to share these details with the professionals I selected.',
     consentTracy: 'I agree to share these details with Tracy.',
     privacyLink: 'Privacy policy',
-    requiredMark: '(required)',
     /** Hidden from people; only bots fill it in. */
     honeypot: 'Leave this field empty',
     submit: 'Send my request',

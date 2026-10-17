@@ -56,11 +56,17 @@ export function Conversation({ embed, config, controller }: ConversationProps) {
     const first = inputRef.current?.querySelector<HTMLElement>(FOCUSABLE) ?? null;
     // On a touch screen, don't pop up the keyboard just because a dropdown comes first.
     const coarse = window.matchMedia?.('(pointer: coarse)').matches ?? false;
+    // Where typing is the answer the text box gets the focus (on a touch screen only when it is
+    // the only thing to answer with, as when asking for a city or ZIP code).
+    if (state.step === 'county_help' || (state.step === 'situation' && !coarse)) {
+      textarea?.focus({ preventScroll: true });
+      return;
+    }
     const typing = first?.matches('input, textarea') ?? false;
     (typing && coarse ? inputRef.current : (first ?? inputRef.current))?.focus({
       preventScroll: true,
     });
-  }, [state.busy, state.stepSeq, state.focus]);
+  }, [state.busy, state.stepSeq, state.focus, state.step]);
 
   // After a failure, focus the Try again button so keyboard users aren't left behind.
   useEffect(() => {
@@ -105,10 +111,14 @@ export function Conversation({ embed, config, controller }: ConversationProps) {
       embed={embed}
       privacyUrl={config.links.privacy}
       reportHeight={state.items.length > 0}
+      holdHeight={state.busy}
       scrollKey={`${state.items.length}|${state.step ?? ''}|${state.busy}|${state.confirm ? 1 : 0}|${state.retry ? 1 : 0}`}
       pinToBottom={!scrollToQuestion}
       focusableLog={
-        state.busy || state.step === 'county_help' || (state.step === null && !state.retry)
+        state.busy ||
+        state.step === 'county_help' ||
+        (state.step === 'pro_info' && !config.links.join) ||
+        (state.step === null && !state.retry)
       }
       logRef={logRef}
       composer={

@@ -573,6 +573,21 @@ describe('a typed county name', () => {
   });
 });
 
+describe('after the safety card', () => {
+  it('says it is ready to carry on, rather than "Sorry, I didn’t catch that"', async () => {
+    const h = harness();
+    await advanceTo(h, 'category');
+    h.api.interpret.mockResolvedValueOnce({ ...unclear, safety: true });
+    h.controller.say('he hits me');
+    await h.settle();
+    expect(h.texts().filter((text) => text === '[safety card]')).toHaveLength(1);
+    expect(h.texts().at(-1)).toBe(copy.safety.continue);
+    expect(h.texts()).not.toContain(copy.fallback.didNotCatch);
+    // The step is still there to answer.
+    expect(h.state().step).toBe('category');
+  });
+});
+
 describe('typed categories', () => {
   it('any kind of professional can be typed at the category step, even from "More options"', async () => {
     const h = harness({ interpret: vi.fn(() => Promise.resolve(option('arbitrator'))) });

@@ -22,6 +22,8 @@ interface ChatLayoutProps {
   focusableLog?: boolean;
   /** Report the height to embed.js. Off while loading, so the iframe doesn't shrink and grow again. */
   reportHeight: boolean;
+  /** The assistant is typing: the iframe may grow but does not shrink until it is done. */
+  holdHeight?: boolean;
   logRef?: RefObject<HTMLDivElement | null>;
 }
 
@@ -35,6 +37,7 @@ export function ChatLayout({
   pinToBottom = true,
   focusableLog = false,
   reportHeight,
+  holdHeight = false,
   logRef,
 }: ChatLayoutProps) {
   const shellRef = useRef<HTMLDivElement>(null);
@@ -42,11 +45,11 @@ export function ChatLayout({
   const log = logRef ?? ownLogRef;
   const logContentRef = useRef<HTMLDivElement>(null);
 
-  useReportHeight(embed.framed && embed.mode === 'inline' && reportHeight, {
-    shell: shellRef,
-    log,
-    logContent: logContentRef,
-  });
+  useReportHeight(
+    embed.framed && embed.mode === 'inline' && reportHeight,
+    { shell: shellRef, log, logContent: logContentRef },
+    holdHeight,
+  );
   useEscapeToClose(embed.framed && embed.mode === 'bubble');
 
   // Keep the newest message in view. Only the message list scrolls, never the host page.
@@ -56,7 +59,7 @@ export function ChatLayout({
   }, [log, scrollKey, pinToBottom]);
 
   return (
-    <div className="adn-shell" data-mode={embed.mode} ref={shellRef}>
+    <main className="adn-shell" data-mode={embed.mode} ref={shellRef}>
       <header className="adn-header">
         <span className="adn-logo" aria-hidden="true">
           <HeartIcon />
@@ -78,6 +81,6 @@ export function ChatLayout({
         {composer}
         <Footer privacyUrl={privacyUrl} />
       </div>
-    </div>
+    </main>
   );
 }

@@ -10,7 +10,7 @@ import type { EmbedContext } from './lib/embedContext';
 import { createTracker, type Tracker } from './lib/events';
 import { newSessionId } from './lib/session';
 
-export const DEFAULT_TYPING_DELAY_MS = 600;
+export const DEFAULT_TYPING_DELAY_MS = 350;
 
 type LoadState =
   { status: 'loading' } | { status: 'ready'; config: PublicConfig } | { status: 'error' };

@@ -227,7 +227,7 @@ describe('the contact form', () => {
 
   it('has a hidden trap field: out of sight, out of the tab order and away from screen readers', () => {
     renderForm();
-    const trap = document.querySelector<HTMLInputElement>('input[name="company_fax"]')!;
+    const trap = document.querySelector<HTMLInputElement>('input[name="website"]')!;
     expect(trap.closest('[aria-hidden="true"]')).not.toBeNull();
     expect(trap).toHaveAttribute('tabindex', '-1');
     expect(trap).toHaveAttribute('autocomplete', 'off');
