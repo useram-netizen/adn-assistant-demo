@@ -8,6 +8,10 @@ import { BASE_URL, testConfig } from './helpers.js';
 // The exact script the server sends: minified, with its settings filled in.
 const served = buildEmbedScript(embedScriptPath, testConfig());
 
+// Before the widget reports its height. jsdom has no layout (every width is 0), so this is
+// the narrow-screen starting height; at 480 px and wider it is 430px.
+const START_HEIGHT = '530px';
+
 function newDom(body: string) {
   return new JSDOM(`<!doctype html><html><head></head><body>${body}</body></html>`, {
     url: 'https://host-site.example/page',
@@ -63,7 +67,7 @@ describe('embed.js inline mode', () => {
     expect(frame?.getAttribute('src')).toBe(`${BASE_URL}/widget?site=divorceamicably&mode=inline`);
     expect(frame?.title).toBe(copy.embed.frameTitle);
     expect(frame?.style.width).toBe('100%');
-    expect(frame?.style.height).toBe('480px');
+    expect(frame?.style.height).toBe(START_HEIGHT);
     expect(frame?.style.getPropertyPriority('height')).toBe('important');
   });
 
@@ -82,7 +86,7 @@ describe('embed.js inline mode', () => {
     page.post(frame!, { type: 'adn:resize', height: 600 }, 'https://evil.example');
     page.post(page.window as unknown as Window, { type: 'adn:resize', height: 600 });
     page.post(null, { type: 'adn:resize', height: 600 });
-    expect(frame?.style.height).toBe('480px');
+    expect(frame?.style.height).toBe(START_HEIGHT);
   });
 
   it.each([['600'], [-10], [0], [Number.NaN], [1e6], [null]])(
@@ -92,7 +96,7 @@ describe('embed.js inline mode', () => {
       page.runEmbed();
       const [frame] = page.frames();
       page.post(frame!, { type: 'adn:resize', height });
-      expect(frame?.style.height).toBe('480px');
+      expect(frame?.style.height).toBe(START_HEIGHT);
     },
   );
 
@@ -103,7 +107,32 @@ describe('embed.js inline mode', () => {
     page.post(frame!, { type: 'adn:resize', height: 100 });
     expect(frame?.style.height).toBe('320px');
     page.post(frame!, { type: 'adn:resize', height: 5000 });
-    expect(frame?.style.height).toBe(`${Math.max(400, page.window.innerHeight - 24)}px`);
+    expect(frame?.style.height).toBe(`${Math.max(320, page.window.innerHeight - 24)}px`);
+  });
+
+  it('starts at the welcome height for wide pages', async () => {
+    const page = await hostPage('<div id="adn-assistant"></div>');
+    Object.defineProperty(page.document.getElementById('adn-assistant'), 'clientWidth', {
+      value: 800,
+    });
+    page.runEmbed();
+    expect(page.frames()[0]?.style.height).toBe('430px');
+  });
+
+  it('ignores small window height changes (mobile toolbars) but follows big ones', async () => {
+    const page = await hostPage('<div id="adn-assistant"></div>');
+    page.runEmbed();
+    const [frame] = page.frames();
+    page.post(frame!, { type: 'adn:resize', height: 5000 });
+    const start = page.window.innerHeight;
+    const resizeTo = (height: number) => {
+      Object.defineProperty(page.window, 'innerHeight', { value: height, configurable: true });
+      page.window.dispatchEvent(new page.window.Event('resize'));
+    };
+    resizeTo(start - 60);
+    expect(frame?.style.height).toBe(`${start - 24}px`);
+    resizeTo(start - 300);
+    expect(frame?.style.height).toBe(`${start - 300 - 24}px`);
   });
 
   it('creates the target next to the script when the page lost it', async () => {
@@ -152,6 +181,27 @@ describe('embed.js inline mode', () => {
 
     const inSlot = page.document.querySelector('#custom-slot iframe');
     expect(inSlot?.getAttribute('src')).toBe(`${BASE_URL}/widget?site=amicabledivorce&mode=inline`);
+    expect(page.frames()).toHaveLength(1);
+  });
+
+  it('uses the tag with the settings when a page editor re-inserts a copy without them', async () => {
+    const page = await hostPage();
+    // The original snippet stays in the page (inert here: jsdom doesn't fetch it)...
+    const original = page.document.createElement('script');
+    original.src = `${BASE_URL}/embed.js`;
+    original.dataset.mode = 'bubble';
+    original.dataset.site = 'divorceamicably';
+    page.document.body.appendChild(original);
+    // ...and a settings-less copy is what actually runs.
+    page.runEmbed({}, page.document.head);
+
+    expect(page.document.getElementById('adn-bubble')).not.toBeNull();
+    expect(page.document.getElementById('adn-assistant')).toBeNull();
+    expect(page.frames()).toHaveLength(0);
+    page.document.getElementById('adn-bubble')!.click();
+    expect(page.frames()[0]?.getAttribute('src')).toBe(
+      `${BASE_URL}/widget?site=divorceamicably&mode=bubble`,
+    );
   });
 });
 
@@ -215,6 +265,69 @@ describe('embed.js bubble mode', () => {
     expect(panel.style.display).toBe('block');
     post(frame!, { type: 'adn:close' });
     expect(panel.style.display).toBe('none');
+  });
+
+  it("ignores Esc in the host page's own fields, or when the host already handled it", async () => {
+    const { button, panel, document, window } = await bubblePage();
+    const field = document.createElement('input');
+    document.body.appendChild(field);
+    button.click();
+    field.focus();
+    field.dispatchEvent(new window.KeyboardEvent('keydown', { key: 'Escape', bubbles: true }));
+    expect(panel.style.display).toBe('block');
+    expect(document.activeElement).toBe(field);
+
+    const closeButton = panel.querySelector('button')!;
+    closeButton.focus();
+    const handled = new window.KeyboardEvent('keydown', {
+      key: 'Escape',
+      bubbles: true,
+      cancelable: true,
+    });
+    handled.preventDefault();
+    closeButton.dispatchEvent(handled);
+    expect(panel.style.display).toBe('block');
+  });
+
+  it("full screen, is modal and puts back the host page's own overflow style", async () => {
+    const page = await hostPage();
+    // A phone: the full-screen layout.
+    Object.assign(page.window, {
+      matchMedia: () => ({ matches: true, addEventListener() {} }),
+    });
+    const root = page.document.documentElement.style;
+    root.setProperty('overflow-y', 'scroll');
+    page.runEmbed({ 'data-mode': 'bubble' });
+    const button = page.document.getElementById('adn-bubble')!;
+    const panel = page.document.getElementById('adn-panel')!;
+
+    button.click();
+    expect(panel.style.width).toBe('100%');
+    expect(panel.getAttribute('aria-modal')).toBe('true');
+    expect(button.style.visibility).toBe('hidden');
+    expect(root.getPropertyValue('overflow-y')).toBe('hidden');
+    const guards = panel.querySelectorAll('span');
+    expect(Array.from(guards, (guard) => guard.tabIndex)).toEqual([0, 0]);
+    // Tabbing past the widget wraps round to Close.
+    (guards[1] as HTMLElement).focus();
+    expect(page.document.activeElement?.getAttribute('aria-label')).toBe(copy.embed.closeLabel);
+
+    // Full screen, Esc closes from anywhere on the page.
+    page.document.body.dispatchEvent(
+      new page.window.KeyboardEvent('keydown', { key: 'Escape', bubbles: true }),
+    );
+    expect(panel.style.display).toBe('none');
+    expect(panel.getAttribute('aria-modal')).toBe('false');
+    expect(button.style.visibility).toBe('visible');
+    expect(root.getPropertyValue('overflow-y')).toBe('scroll');
+    expect(root.getPropertyValue('overflow-x')).toBe('');
+  });
+
+  it('is not modal in the desktop panel', async () => {
+    const { button, panel } = await bubblePage();
+    button.click();
+    expect(panel.getAttribute('aria-modal')).toBe('false');
+    expect(Array.from(panel.querySelectorAll('span'), (guard) => guard.tabIndex)).toEqual([-1, -1]);
   });
 
   it('adds only one bubble per page', async () => {

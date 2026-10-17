@@ -34,13 +34,11 @@ export function securityHeaders(config: Config): RequestHandler {
     ...(https ? { upgradeInsecureRequests: [] } : {}),
   };
 
+  const ancestors = frameAncestors(config.embed.allowedOrigins);
   const widget = helmet({
     contentSecurityPolicy: {
       useDefaults: false,
-      directives: {
-        ...baseDirectives,
-        frameAncestors: frameAncestors(config.embed.allowedOrigins),
-      },
+      directives: ancestors ? { ...baseDirectives, frameAncestors: ancestors } : baseDirectives,
     },
     frameguard: false,
     crossOriginResourcePolicy: { policy: 'cross-origin' },

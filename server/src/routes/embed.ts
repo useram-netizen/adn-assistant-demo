@@ -11,6 +11,8 @@ export function embedRouter(config: Config, embedScriptPath: string): Router {
   router.get('/embed.js', (_req, res) => {
     // Host sites load this file from another origin, so it must not be same-origin only.
     res.setHeader('Cross-Origin-Resource-Policy', 'cross-origin');
+    // Lets host pages load it with a crossorigin attribute (or Subresource Integrity) too.
+    res.setHeader('Access-Control-Allow-Origin', '*');
     // Short cache, so a new version reaches the host sites within minutes.
     res.setHeader('Cache-Control', 'public, max-age=300');
     res.type('text/javascript').send(script);

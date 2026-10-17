@@ -62,7 +62,7 @@ describe('frameAncestors', () => {
     expect(frameAncestors([])).toEqual(["'self'"]);
   });
 
-  it('collapses to * when any site is allowed', () => {
-    expect(frameAncestors(['https://a.example', '*'])).toEqual(["'self'", '*']);
+  it('is null (no frame-ancestors at all) when any site is allowed', () => {
+    expect(frameAncestors(['https://a.example', '*'])).toBeNull();
   });
 });

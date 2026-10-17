@@ -11,6 +11,9 @@ interface ComposerProps {
   disabled?: boolean;
   /** The bot is typing: text can be written but not sent yet. */
   busy?: boolean;
+  /** Hide the text box (while a form is showing). Back and Start over stay. */
+  hideText?: boolean;
+  placeholder?: string;
   canGoBack: boolean;
   onBack: () => void;
   onRestart: () => void;
@@ -22,6 +25,8 @@ interface ComposerProps {
 export function Composer({
   disabled = false,
   busy = false,
+  hideText = false,
+  placeholder = copy.widget.inputPlaceholder,
   canGoBack,
   onBack,
   onRestart,
@@ -72,7 +77,7 @@ export function Composer({
           {copy.widget.startOver}
         </button>
       </div>
-      <form className="adn-text-row" onSubmit={onSubmit}>
+      <form className="adn-text-row" onSubmit={onSubmit} hidden={hideText}>
         <label htmlFor={inputId} className="adn-sr-only">
           {copy.widget.inputLabel}
         </label>
@@ -82,7 +87,7 @@ export function Composer({
           className="adn-textarea"
           rows={1}
           maxLength={MAX_TEXT_LENGTH}
-          placeholder={copy.widget.inputPlaceholder}
+          placeholder={placeholder}
           autoComplete="off"
           value={text}
           disabled={disabled}

@@ -35,8 +35,12 @@ export function parseEmbedOrigins(raw: string): ParsedEmbedOrigins {
   return { sources: [...new Set(sources)], invalid };
 }
 
-/** The frame-ancestors list for /widget. This server is always allowed, for /embed-test. */
-export function frameAncestors(sources: readonly string[]): string[] {
-  if (sources.includes('*')) return ["'self'", '*'];
+/**
+ * The frame-ancestors list for /widget. This server is always allowed, for /embed-test.
+ * null for "*": then no frame-ancestors is sent at all, because "*" in frame-ancestors still
+ * blocks pages with an opaque origin (an embed block inside a sandboxed iframe).
+ */
+export function frameAncestors(sources: readonly string[]): string[] | null {
+  if (sources.includes('*')) return null;
   return ["'self'", ...sources.filter((source) => source !== "'self'")];
 }

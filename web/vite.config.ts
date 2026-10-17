@@ -4,8 +4,10 @@ import type { Plugin } from 'vite';
 import { defineConfig } from 'vitest/config';
 import { copy } from '../server/src/config/copy.ts';
 
-/** The one wording file (spec rule 6), shared with the server. */
+/** Shared with the server: the one wording file (spec rule 6), the taxonomy and the API types. */
 const copyFile = fileURLToPath(new URL('../server/src/config/copy.ts', import.meta.url));
+const taxonomyFile = fileURLToPath(new URL('../server/src/config/taxonomy.ts', import.meta.url));
+const apiFile = fileURLToPath(new URL('../server/src/shared/api.ts', import.meta.url));
 
 const escapeHtml = (value: string) =>
   value.replace(/[&<>"']/g, (char) => `&#${char.charCodeAt(0)};`);
@@ -26,7 +28,7 @@ export default defineConfig({
   base: '/widget/',
   plugins: [react(), wordingInHtml()],
   resolve: {
-    alias: { '@adn/copy': copyFile },
+    alias: { '@adn/copy': copyFile, '@adn/taxonomy': taxonomyFile, '@adn/api': apiFile },
   },
   build: {
     outDir: 'dist',

@@ -9,12 +9,17 @@ describe('loadConfig', () => {
     expect(config.email.mode).toBe('preview');
     expect(config.ai).toEqual({
       enabled: true,
+      available: false,
       apiKey: undefined,
       model: 'gpt-6-luna',
+      baseUrl: undefined,
       timeoutMs: 10_000,
       maxCallsPerSession: 20,
       storeTranscripts: false,
     });
+    expect(config.platform).toBe('other');
+    expect(config.trustProxy).toBe('loopback');
+    expect(config.publicBaseUrlSource).toBe('default');
     expect(config.links).toEqual({
       join: undefined,
       ukSite: 'https://amicabledivorcenetwork.co.uk',
@@ -32,6 +37,27 @@ describe('loadConfig', () => {
       'https://www.amicabledivorce.net',
       'http://localhost:*',
     ]);
+  });
+
+  it('on Render, uses RENDER_EXTERNAL_URL unless PUBLIC_BASE_URL is set, and trusts the proxy', () => {
+    const render = { RENDER: 'true', RENDER_EXTERNAL_URL: 'https://adn-assistant.onrender.com' };
+    const config = loadConfig(render);
+    expect(config.publicBaseUrl).toBe('https://adn-assistant.onrender.com');
+    expect(config.publicBaseUrlSource).toBe('RENDER_EXTERNAL_URL');
+    expect(config.platform).toBe('render');
+    expect(config.trustProxy).toBe(true);
+    const custom = loadConfig({ ...render, PUBLIC_BASE_URL: 'https://assistant.example.com' });
+    expect(custom.publicBaseUrl).toBe('https://assistant.example.com');
+    expect(custom.publicBaseUrlSource).toBe('PUBLIC_BASE_URL');
+    expect(loadConfig({ ...render, TRUST_PROXY: '2' }).trustProxy).toBe(2);
+  });
+
+  it('resolves file paths against the repo root', () => {
+    const config = loadConfig({ MEMBERS_FILE: 'data/other.csv', STORAGE_DIR: '/tmp/adn-data' });
+    expect(config.paths.membersFile).toMatch(/[\\/]data[\\/]other\.csv$/);
+    expect(config.paths.storageDir).toBe('/tmp/adn-data');
+    expect(config.paths.countiesFile).toMatch(/us-counties-2020\.csv$/);
+    expect(loadConfig({}).paths.mailPreviewDir).toMatch(/server[\\/]\.mail-preview$/);
   });
 
   it('treats empty values as unset', () => {
@@ -145,7 +171,16 @@ describe('configWarnings', () => {
     const config = loadConfig({
       NODE_ENV: 'production',
       PUBLIC_BASE_URL: 'https://assistant.example.com',
+      OPENAI_API_KEY: 'sk-test',
     });
     expect(configWarnings(config)).toEqual([]);
+  });
+
+  it('warns when the AI is on without a key', () => {
+    expect(configWarnings(loadConfig({}))).toContain(
+      'AI_ENABLED is on but OPENAI_API_KEY is not set: typed answers fall back to buttons.',
+    );
+    expect(loadConfig({ OPENAI_API_KEY: 'sk-test' }).ai.available).toBe(true);
+    expect(loadConfig({ OPENAI_API_KEY: 'sk-test', AI_ENABLED: 'false' }).ai.available).toBe(false);
   });
 });

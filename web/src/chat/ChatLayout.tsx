@@ -13,6 +13,8 @@ interface ChatLayoutProps {
   composer: ReactNode;
   /** Changes whenever something is added to the conversation, to scroll to the newest message. */
   scrollKey: unknown;
+  /** Scroll to the bottom when `scrollKey` changes (false for long screens the caller scrolls itself). */
+  pinToBottom?: boolean;
   /** Report the height to embed.js. Off while loading, so the iframe doesn't shrink and grow again. */
   reportHeight: boolean;
   logRef?: RefObject<HTMLDivElement | null>;
@@ -25,6 +27,7 @@ export function ChatLayout({
   children,
   composer,
   scrollKey,
+  pinToBottom = true,
   reportHeight,
   logRef,
 }: ChatLayoutProps) {
@@ -43,8 +46,8 @@ export function ChatLayout({
   // Keep the newest message in view. Only the message list scrolls, never the host page.
   useLayoutEffect(() => {
     const element = log.current;
-    if (element) element.scrollTop = element.scrollHeight;
-  }, [log, scrollKey]);
+    if (element && pinToBottom) element.scrollTop = element.scrollHeight;
+  }, [log, scrollKey, pinToBottom]);
 
   return (
     <div className="adn-shell" data-mode={embed.mode} ref={shellRef}>
@@ -57,14 +60,7 @@ export function ChatLayout({
           <p className="adn-subtitle">{copy.widget.headerSubtitle}</p>
         </div>
       </header>
-      <div
-        className="adn-log"
-        role="log"
-        aria-live="polite"
-        aria-label={copy.widget.conversationLabel}
-        tabIndex={-1}
-        ref={log}
-      >
+      <div className="adn-log" tabIndex={-1} ref={log}>
         <div className="adn-log-content" ref={logContentRef}>
           {children}
         </div>

@@ -55,6 +55,25 @@ describe('errorHandler', () => {
   });
 });
 
+describe('errorHandler after the response started', () => {
+  it('closes the connection and logs the error redacted, not through Express', async () => {
+    const logged = vi.spyOn(console, 'error').mockImplementation(() => {});
+    const app = express();
+    app.get('/api/stream', (_req, res, next) => {
+      res.writeHead(200, { 'Content-Type': 'text/plain' });
+      res.write('partial');
+      next(new Error('failed for jane.doe@example.com'));
+    });
+    app.use(errorHandler);
+    await request(app)
+      .get('/api/stream')
+      .catch(() => undefined);
+    const output = logged.mock.calls.map((call) => String(call[0])).join('\n');
+    expect(output).toContain('request_failed');
+    expect(output).not.toContain('jane.doe@example.com');
+  });
+});
+
 describe('redact', () => {
   it('removes email addresses and phone numbers', () => {
     expect(redact('mail jane.doe+adn@example.co.uk now')).toBe('mail [email] now');

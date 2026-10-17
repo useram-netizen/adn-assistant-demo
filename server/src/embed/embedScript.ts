@@ -1,5 +1,5 @@
 import { readFileSync } from 'node:fs';
-import { transformSync } from 'esbuild';
+import { stop, transformSync } from 'esbuild';
 import { copy } from '../config/copy.js';
 import type { Config } from '../config/env.js';
 import { scriptSafeJson } from '../lib/html.js';
@@ -30,6 +30,8 @@ export function buildEmbedScript(sourcePath: string, config: Config): string {
     target: 'es2017',
     legalComments: 'none',
   });
+  // The minifier runs once; don't keep its worker thread and child process for the server's life.
+  void stop();
   if (!code.includes(PLACEHOLDER)) {
     throw new Error(`embed.js no longer contains ${PLACEHOLDER}`);
   }

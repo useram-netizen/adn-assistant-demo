@@ -18,6 +18,10 @@
   --adn-accent-hover: #226873;
   --adn-accent-contrast: #ffffff;
   --adn-accent-soft: #cfebeb;
+  --adn-gold-soft: #f6e8c0;
+  --adn-platinum-soft: #e4e1ee;
+  --adn-danger: #8f2d2d;
+  --adn-danger-soft: #fbeaea;
 
   --adn-radius-lg: 18px;
   --adn-radius-md: 14px;
@@ -460,10 +464,501 @@ body {
 
   .adn-typing-dot {
     animation: none;
-    opacity: 0.6;
+    opacity: 1;
   }
 
   .adn-option {
     transition: none;
+  }
+}
+
+
+/* ---------------------------------------------------------------- Conversation parts */
+
+.adn-messages {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+
+.adn-options {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.adn-input:focus {
+  outline: none;
+}
+
+.adn-option-text {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  min-width: 0;
+}
+
+.adn-option-label {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 4px 8px;
+}
+
+.adn-option-desc {
+  color: var(--adn-text-muted);
+  font-size: 14px;
+  line-height: 1.4;
+}
+
+.adn-tag {
+  padding: 1px 8px;
+  color: var(--adn-text);
+  font-size: 12px;
+  font-weight: 600;
+  background: var(--adn-accent-soft);
+  border-radius: 999px;
+}
+
+.adn-step-note {
+  margin: 4px 0 0;
+  color: var(--adn-text-muted);
+  font-size: 14px;
+}
+
+.adn-links {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  align-items: flex-start;
+}
+
+.adn-primary {
+  min-height: 48px;
+  padding: 11px 20px;
+  color: var(--adn-accent-contrast);
+  font: inherit;
+  font-weight: 600;
+  background: var(--adn-accent);
+  border: 0;
+  border-radius: var(--adn-radius-md);
+  cursor: pointer;
+}
+
+.adn-primary:hover:not(:disabled) {
+  background: var(--adn-accent-hover);
+}
+
+.adn-primary:disabled {
+  color: var(--adn-text-muted);
+  background: var(--adn-surface-muted);
+  cursor: default;
+}
+
+.adn-primary:focus-visible,
+.adn-more:focus-visible,
+.adn-select:focus-visible,
+.adn-safety-link:focus-visible,
+.adn-field a:focus-visible {
+  outline: 3px solid var(--adn-accent);
+  outline-offset: 2px;
+}
+
+/* ---------------------------------------------------------------- Searchable dropdown */
+
+.adn-combo {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+.adn-combo-label {
+  color: var(--adn-text-muted);
+  font-size: 14px;
+  font-weight: 500;
+}
+
+.adn-combo-input {
+  width: 100%;
+  min-height: 48px;
+  margin: 0;
+  padding: 10px 14px;
+  color: var(--adn-text);
+  font: inherit;
+  font-size: 16px;
+  background: var(--adn-surface);
+  border: 1px solid var(--adn-border-strong);
+  border-radius: var(--adn-radius-md);
+}
+
+.adn-combo-input::placeholder {
+  color: var(--adn-text-muted);
+  opacity: 1;
+}
+
+.adn-combo-input:focus-visible,
+.adn-field input:focus-visible,
+.adn-field textarea:focus-visible {
+  border-color: var(--adn-accent);
+  outline: 2px solid var(--adn-accent);
+  outline-offset: 0;
+}
+
+.adn-combo-list {
+  max-height: 232px;
+  margin: 0;
+  padding: 4px;
+  overflow-y: auto;
+  list-style: none;
+  background: var(--adn-surface);
+  border: 1px solid var(--adn-border-strong);
+  border-radius: var(--adn-radius-md);
+  overscroll-behavior: contain;
+}
+
+.adn-combo-list[hidden] {
+  display: none;
+}
+
+.adn-combo-option {
+  padding: 10px 12px;
+  border-radius: var(--adn-radius-sm);
+  cursor: pointer;
+}
+
+.adn-combo-option[data-active='true'] {
+  color: var(--adn-text);
+  background: var(--adn-accent-soft);
+}
+
+.adn-combo-empty {
+  padding: 10px 12px;
+  color: var(--adn-text-muted);
+}
+
+/* ---------------------------------------------------------------- Result cards */
+
+.adn-results {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+
+.adn-cards {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.adn-card {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+  padding: 14px 16px;
+  background: var(--adn-surface);
+  border: 1px solid var(--adn-border);
+  border-radius: var(--adn-radius-md);
+  box-shadow: var(--adn-shadow-soft);
+}
+
+.adn-card[data-selected='true'] {
+  border-color: var(--adn-accent);
+  box-shadow: 0 0 0 2px var(--adn-accent);
+}
+
+.adn-card-main {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  min-width: 0;
+}
+
+.adn-card-name {
+  margin: 0;
+  font-family: var(--adn-font-serif);
+  font-size: 18px;
+  font-weight: 500;
+  line-height: 1.3;
+  overflow-wrap: anywhere;
+}
+
+.adn-card-labels {
+  margin: 0;
+  font-weight: 500;
+}
+
+.adn-card-area,
+.adn-card-contact {
+  margin: 0;
+  color: var(--adn-text-muted);
+  font-size: 14px;
+}
+
+.adn-badges {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  margin: 4px 0 0;
+  padding: 0;
+  list-style: none;
+}
+
+.adn-badge {
+  padding: 2px 10px;
+  color: var(--adn-text);
+  font-size: 12px;
+  font-weight: 600;
+  background: var(--adn-surface-muted);
+  border-radius: 999px;
+}
+
+.adn-badge--platinum {
+  background: var(--adn-platinum-soft);
+}
+
+.adn-badge--gold {
+  background: var(--adn-gold-soft);
+}
+
+.adn-badge--cadp {
+  background: var(--adn-accent-soft);
+}
+
+.adn-select {
+  align-self: flex-start;
+  min-height: 44px;
+  padding: 8px 18px;
+  color: var(--adn-accent);
+  font: inherit;
+  font-weight: 600;
+  background: var(--adn-surface);
+  border: 1px solid var(--adn-accent);
+  border-radius: var(--adn-radius-md);
+  cursor: pointer;
+}
+
+.adn-select[aria-pressed='true'] {
+  color: var(--adn-accent-contrast);
+  background: var(--adn-accent);
+}
+
+.adn-select:disabled {
+  color: var(--adn-text-muted);
+  border-color: var(--adn-border-strong);
+  cursor: default;
+}
+
+.adn-more {
+  min-height: 44px;
+  padding: 8px 18px;
+  color: var(--adn-accent);
+  font: inherit;
+  font-weight: 600;
+  background: var(--adn-surface);
+  border: 1px solid var(--adn-border-strong);
+  border-radius: var(--adn-radius-md);
+  cursor: pointer;
+}
+
+/* The contact button stays in reach while the visitor scrolls the list. */
+.adn-contact-bar {
+  position: sticky;
+  bottom: -16px;
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  margin: 0 -4px -16px;
+  padding: 10px 4px 16px;
+  background: linear-gradient(to bottom, transparent, var(--adn-bg) 28%);
+}
+
+.adn-hint {
+  margin: 0;
+  color: var(--adn-text-muted);
+  font-size: 14px;
+}
+
+/* ---------------------------------------------------------------- Safety card */
+
+.adn-safety {
+  max-width: min(94%, 560px);
+  padding: 14px 16px;
+  background: var(--adn-danger-soft);
+  border: 1px solid var(--adn-danger);
+  border-radius: var(--adn-radius-md);
+}
+
+.adn-safety-title {
+  margin: 0 0 6px;
+  color: var(--adn-danger);
+  font-family: var(--adn-font-serif);
+  font-size: 18px;
+  font-weight: 500;
+}
+
+.adn-safety-text {
+  margin: 0 0 10px;
+}
+
+.adn-safety-actions {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.adn-safety-link {
+  display: inline-flex;
+  align-items: center;
+  min-height: 44px;
+  padding: 8px 14px;
+  color: var(--adn-danger);
+  font-weight: 600;
+  text-decoration: none;
+  background: var(--adn-surface);
+  border: 1px solid var(--adn-danger);
+  border-radius: var(--adn-radius-md);
+}
+
+/* ---------------------------------------------------------------- Contact form */
+
+.adn-form {
+  display: flex;
+  flex-direction: column;
+  gap: 14px;
+  padding: 16px;
+  background: var(--adn-surface);
+  border: 1px solid var(--adn-border);
+  border-radius: var(--adn-radius-md);
+}
+
+.adn-field {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  min-width: 0;
+  margin: 0;
+  padding: 0;
+  border: 0;
+}
+
+.adn-field > label,
+.adn-radios legend {
+  padding: 0;
+  font-size: 14px;
+  font-weight: 600;
+}
+
+.adn-field input[type='text'],
+.adn-field input[type='email'],
+.adn-field input[type='tel'],
+.adn-field textarea {
+  width: 100%;
+  min-height: 46px;
+  margin: 0;
+  padding: 10px 12px;
+  color: var(--adn-text);
+  font: inherit;
+  font-size: 16px;
+  background: var(--adn-surface);
+  border: 1px solid var(--adn-border-strong);
+  border-radius: var(--adn-radius-sm);
+}
+
+.adn-field textarea {
+  min-height: 120px;
+  line-height: 1.45;
+  resize: vertical;
+}
+
+.adn-field [aria-invalid='true'] {
+  border-color: var(--adn-danger);
+}
+
+.adn-radios {
+  gap: 8px;
+}
+
+.adn-radio,
+.adn-checkbox {
+  display: flex;
+  align-items: flex-start;
+  gap: 10px;
+  min-height: 44px;
+  padding: 6px 0;
+  font-weight: 400;
+}
+
+.adn-radio input,
+.adn-checkbox input {
+  flex: none;
+  width: 22px;
+  height: 22px;
+  margin: 1px 0 0;
+  accent-color: var(--adn-accent);
+}
+
+.adn-field-error,
+.adn-form-error,
+.adn-form-summary {
+  margin: 0;
+  color: var(--adn-danger);
+  font-size: 14px;
+  font-weight: 500;
+}
+
+.adn-form-summary,
+.adn-form-error {
+  padding: 10px 12px;
+  background: var(--adn-danger-soft);
+  border-radius: var(--adn-radius-sm);
+}
+
+/* The bot trap: out of sight and out of the keyboard order, but present for bots. */
+.adn-trap {
+  position: absolute;
+  left: -10000px;
+  width: 1px;
+  height: 1px;
+  overflow: hidden;
+}
+
+/* ---------------------------------------------------------------- Short screens */
+
+@media (max-height: 520px) {
+  .adn-header {
+    padding-top: 6px;
+    padding-bottom: 6px;
+  }
+
+  .adn-subtitle {
+    display: none;
+  }
+
+  .adn-logo {
+    width: 28px;
+    height: 28px;
+  }
+
+  .adn-nav {
+    margin-bottom: 2px;
+  }
+
+  .adn-nav-button {
+    min-height: 32px;
+  }
+
+  .adn-composer {
+    padding-top: 4px;
+  }
+
+  .adn-footer {
+    padding-top: 2px;
+    padding-bottom: 6px;
   }
 }

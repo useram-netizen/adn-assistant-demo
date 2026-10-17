@@ -2,8 +2,26 @@ You're building the ADN Professional Matcher, a chat assistant for a client. Rea
 
 First, save this brief word for word as docs/SPEC.md. Then create a short CLAUDE.md that points to docs/SPEC.md and repeats the "Rules you must follow" section. After that, build milestone M1 only and stop. I'll review each milestone before you continue. Anything marked OPEN isn't decided yet: use the default given, keep it in config, and mention it in your milestone summary. Ask me before changing anything else.
 
+## Changes since the original brief (2026-10-17)
+The owner changed these decisions; the sections below are updated to match.
+- **Hosting:** the app runs on Render as the web service `adn-assistant` (https://adn-assistant.onrender.com, Starter plan, Ohio region). It deploys automatically from `main` of the private GitHub repo growthguild/adn-professional-matcher. Only `OPENAI_API_KEY` must be set on Render; every other setting has a working default.
+- **Member data without a database:**
+  - `data/members.csv` is committed (the repo is private) and loaded into memory when the server starts. The import rules below run in memory, and the result is what matching uses.
+  - The file is re-read every 10 minutes. To update members, replace the file and push.
+  - `npm run import -- data/members.csv` is a dry-run report; there is no `--apply` or `--sync`.
+- **MongoDB is optional:** with `MONGODB_URI` set, leads, gaps and events go to MongoDB. Without it, they go to JSON files in `STORAGE_DIR` (default `.data/`).
+  - A missing or failing database never crashes or blocks anything.
+  - Render's disk resets on each deploy, and that's accepted for now.
+- **Public URL:** `PUBLIC_BASE_URL` if set, otherwise `RENDER_EXTERNAL_URL` (set by Render).
+- **M2–M5 built together:** at the owner's request, everything from M2 to M5 was built in one task and deployed, with `EMAIL_MODE=preview`.
+- **Situation capture:** if a visitor describes their situation at any step, the text is kept as their situation.
+  - For example, "My husband and I decided to split. We have two kids and want to keep it civil" typed at the welcome step goes to the state question.
+  - The situation step is then skipped, and the text is used for the suggestions and the form pre-fill.
+- **/embed-test:** shows only the chatbot; `/embed-test?mode=all` shows the full test page.
+- **Placeholder wording:** "isn't connected yet" style messages are not allowed anywhere.
+
 ## Files I've given you
-- data/members.csv: the client's member list, exported from their Google Sheet. Treat it as input only and never edit it. Later updates may arrive as .csv or .xlsx, so the import must accept both.
+- data/members.csv: the client's member list, exported from their Google Sheet. Treat it as input only and never edit it. Later updates may arrive as .csv or .xlsx, so the import must accept both. It is committed to the private repo, and the server loads it at startup (`MEMBERS_FILE`).
 - data/us-counties-2020.csv: every US county and county-equivalent in the 50 states + DC, from the US Census 2020 list (3,143 rows). Columns: state, fips, name, aliases. Aliases are old or alternate names, separated by "|", and are used only to match text in the member list.
 
 ## Background
@@ -13,15 +31,15 @@ First, save this brief word for word as docs/SPEC.md. Then create a short CLAUDE
 - Today, visitors browse a directory and contact professionals themselves. Tracy steps in only when nobody covers a visitor's area, and she uses that moment to refer non-members, which gives them a reason to join.
 - What we're building: a chat-style assistant that runs 24/7. It asks a few set questions, then shows member professionals who serve the visitor's county. The visitor picks some, and we email the visitor's request to them (a warm handoff).
 - Look-and-feel reference: https://amicabledivorceintake.lovable.app/
-- Hosting: our own servers, our own OpenAI key and our own email account.
+- Hosting: Render (see "Changes since the original brief"), our own OpenAI key and our own email account.
 - Out of scope: email campaigns, a new website, the GrowthZone API, payments, logins, legal advice from the AI. Planned for after launch (not now): an admin screen for Kristy and a usage dashboard.
 
 ## Stack (decided)
 - npm workspaces monorepo: server/, web/, data/, docs/.
-- server: Node.js 20+, TypeScript, Express, zod, MongoDB (official driver), OpenAI (official openai package, using the Responses API with Structured Outputs / JSON schema) and nodemailer over SMTP.
+- server: Node.js 20+, TypeScript, Express, zod, MongoDB (official driver; optional, with JSON files on disk when `MONGODB_URI` is not set), OpenAI (official openai package, using the Responses API with Structured Outputs / JSON schema) and nodemailer over SMTP.
 - web: a React + Vite + TypeScript chat widget, built to static files that the server serves at /widget.
 - One Node process serves /api/*, /widget, /embed.js and /embed-test. Use HTTPS in production.
-- There are only about 200–400 members, so keep every searchable member in memory for matching. Reload them after each import and every 10 minutes. MongoDB stays the source of truth.
+- There are only about 200–400 members, so keep every searchable member in memory for matching. They are loaded from data/members.csv when the server starts and re-read every 10 minutes. The file is the source of truth: replace it and push to update the members.
 - Tests: vitest, supertest and Playwright.
 
 ## Rules you must follow
@@ -29,7 +47,7 @@ First, save this brief word for word as docs/SPEC.md. Then create a short CLAUDE
 2. Never send a visitor's name, email or phone number to OpenAI.
 3. State, county and professional type must always come from validated options, never straight from AI output.
 4. The widget runs in an iframe on another domain, so it must not rely on cookies or localStorage. Keep state in memory, and wrap any storage use in try/catch.
-5. Keep secrets only in .env, and never commit them. Keep .env.example complete.
+5. Keep secrets only in .env (or Render's environment settings), and never commit them. Keep .env.example complete.
 6. Put all visitor-facing wording in one config file, so the client's final wording can be dropped in later.
 7. The import must reproduce the expected numbers below exactly.
 
@@ -40,6 +58,7 @@ First, save this brief word for word as docs/SPEC.md. Then create a short CLAUDE
 - Back and Start over are always available. Changing an answer clears every answer after it.
 - Footer on every screen: "Automated assistant · General information only, not legal advice · Privacy", where Privacy links to PRIVACY_URL.
 - Never ask for names or contact details in the chat.
+- If the visitor describes their situation at any step, keep that text as their situation. Don't ask the situation question again, and use the text for the category suggestions and the contact form pre-fill.
 
 The steps:
 1. welcome: "Hi! I'm the Amicable Divorce Network assistant. I can help you find vetted divorce professionals near you. Are you…" Buttons: "I'm going through a divorce or considering one" → location; "I'm a divorce professional" → pro_info.
@@ -78,7 +97,7 @@ The card says: "If you're in danger, call 911. National Domestic Violence Hotlin
 - The server checks every returned field against the allowed values.
 
 Calls:
-- interpret(step, question, allowed options [{id,label}], text) → { kind: "option"|"question"|"unclear", option_id|null, reply (≤50 words), safety_concern }. If option_id isn't in the list, treat it as unclear.
+- interpret(step, question, allowed options [{id,label}], text) → { kind: "option"|"question"|"unclear", option_id|null, reply (≤50 words), safety_concern, shares_situation }. If option_id isn't in the list, treat it as unclear. shares_situation is true when the text describes the visitor's own situation (see "Conversation flow").
 - countyFromPlace(state, text, that state's counties) → { county_fips|null, confidence: "high"|"low", reply, safety_concern }.
 - situation(stage, text, category keys) → { reply, suggested_categories, summary, safety_concern }.
   - reply: an acknowledgement only, ≤40 words.
@@ -133,6 +152,8 @@ Rules, in this order:
 11. A member is searchable only if they have a tier, a real profession, a US state and an email, and they are either Platinum or have at least one county. Otherwise, store the reason.
 12. data/member-overrides.json (create it as {}): manual decisions keyed by email, e.g. { "x@y.com": { "exclude": true, "reason": "…" } }. Apply these last.
 
+The server applies these rules in memory when it starts (see "Changes since the original brief").
+
 Command: npm run import -- data/members.csv runs a dry run and prints:
 - the counts
 - non-searchable members, with reasons
@@ -141,7 +162,7 @@ Command: npm run import -- data/members.csv runs a dry run and prints:
 - unknown professions
 - inferred states
 
-With --apply, it writes to MongoDB (upserting by member ID) and saves the report in an imports collection. Only with --sync does it also mark members missing from the file as inactive; never do that by default.
+There is no --apply or --sync: members live in memory, loaded from the file. (Originally --apply wrote to MongoDB and --sync marked members missing from the file as inactive.)
 
 Expected dry-run result on the data/members.csv I gave you (it must match exactly):
 - 213 rows → 211 members. The merged rows are Storey Jones, and Tammy M. Gruen, MBA, CDFA®.
@@ -255,7 +276,7 @@ Other embedding rules:
 - /widget sends Content-Security-Policy frame-ancestors from ALLOWED_EMBED_ORIGINS. Allow * for the first test.
 - Turn off helmet's frameguard on /widget, and never send X-Frame-Options DENY.
 - The widget works from 320 to 800 px wide with no horizontal scroll.
-- /embed-test shows both the inline and bubble modes.
+- /embed-test shows only the chatbot, embedded inline. /embed-test?mode=all shows the inline, bubble and fallback versions with their codes (?mode=inline, bubble or fallback shows one of them).
 
 ## Tracking and admin
 - Events: POST /api/events with { sessionId, site, events: [{ type, data, at }] }. sessionId is a random UUID kept in memory. No personal data.
@@ -280,7 +301,7 @@ Rate limits per IP: AI 20/min, match 30/min, leads and the Tracy form 5/hour. Re
 - Lead retention is OPEN: LEAD_RETENTION_DAYS (unset = keep).
 
 ## .env variables
-PORT, PUBLIC_BASE_URL, MONGODB_URI, MONGODB_DB, OPENAI_API_KEY, OPENAI_MODEL (gpt-6-luna), OPENAI_TIMEOUT_MS (10000), AI_ENABLED (true), MAX_AI_CALLS_PER_SESSION (20), STORE_TRANSCRIPTS (false), EMAIL_MODE (preview), EMAIL_REDIRECT_TO, SMTP_HOST, SMTP_PORT, SMTP_USER, SMTP_PASS, EMAIL_FROM, LEAD_COPY_TO, TRACY_EMAIL, ADMIN_TOKEN, ALLOWED_EMBED_ORIGINS (https://divorceamicably.com https://www.divorceamicably.com https://amicabledivorce.net https://www.amicabledivorce.net http://localhost:*), JOIN_URL, UK_SITE_URL (https://amicabledivorcenetwork.co.uk), ARTICLES_URL, PODCAST_URL, BOOKING_URL, PRIVACY_URL, SHOW_PRO_CONTACT (false), LEAD_RETENTION_DAYS.
+NODE_ENV, PORT, PUBLIC_BASE_URL (empty = RENDER_EXTERNAL_URL, then http://localhost:PORT), TRUST_PROXY (empty = automatic), MEMBERS_FILE (data/members.csv), MEMBER_OVERRIDES_FILE (data/member-overrides.json), STORAGE_DIR (.data), MONGODB_URI (empty = JSON files), MONGODB_DB, OPENAI_API_KEY, OPENAI_MODEL (gpt-6-luna), OPENAI_BASE_URL (tests only), OPENAI_TIMEOUT_MS (10000), AI_ENABLED (true), MAX_AI_CALLS_PER_SESSION (20), STORE_TRANSCRIPTS (false), EMAIL_MODE (preview), EMAIL_REDIRECT_TO, MAIL_PREVIEW_DIR (server/.mail-preview), SMTP_HOST, SMTP_PORT, SMTP_USER, SMTP_PASS, EMAIL_FROM, LEAD_COPY_TO, TRACY_EMAIL, ADMIN_TOKEN, ALLOWED_EMBED_ORIGINS (https://divorceamicably.com https://www.divorceamicably.com https://amicabledivorce.net https://www.amicabledivorce.net http://localhost:*), JOIN_URL, UK_SITE_URL (https://amicabledivorcenetwork.co.uk), ARTICLES_URL, PODCAST_URL, BOOKING_URL, PRIVACY_URL, SHOW_PRO_CONTACT (false), LEAD_RETENTION_DAYS, RATE_LIMITS (tests only: off).
 
 ## UI
 - Mobile first. Typing indicator, auto-scroll to the newest message, and focus moves to the new input.
@@ -305,6 +326,7 @@ Playwright E2E tests inside /embed-test, at 375 px and 1280 px:
 - a typed answer → "Did you mean…?"
 
 ## Milestones (stop after each one; summarise what you built and list any OPEN items you touched)
+On 2026-10-17 the owner asked for M2–M5 to be built together in one task, without stopping between milestones, and deployed to Render.
 M1 (days 1–2):
 - Build: the monorepo with TypeScript, lint and tests; /api/health; /widget with a minimal chat (a welcome message and two buttons that each lead to a second message); /embed.js (inline and bubble); /embed-test; the frame-ancestors header; .env.example; a README.
 - Done when: it works on /embed-test at phone and desktop sizes. This build goes to Tracy's web guy to check that it displays in GrowthZone.

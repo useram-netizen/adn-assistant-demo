@@ -1,9 +1,11 @@
+import { isAbsolute, resolve } from 'node:path';
 import { z } from 'zod';
+import { repoRoot, serverRoot } from '../paths.js';
 import { DEFAULT_EMBED_ORIGINS, parseEmbedOrigins } from '../security/embedOrigins.js';
 
 /**
  * Every setting from .env, checked with zod when the server starts (see .env.example).
- * Settings for later milestones are parsed here too, so there is one place to look.
+ * Everything has a working default: on Render, only OPENAI_API_KEY needs to be set.
  */
 
 const httpUrl = z.url({ protocol: /^https?$/, error: 'must be a full http(s) URL' });
@@ -37,17 +39,38 @@ const originUrl = httpUrl
 
 const email = z.email({ error: 'must be an email address' });
 
+/** "loopback" (the default off Render), "true", "false", a hop count, or addresses/subnets. */
+const trustProxy = z
+  .string()
+  .transform((value): boolean | number | string => {
+    if (value === 'true') return true;
+    if (value === 'false') return false;
+    if (/^\d+$/.test(value)) return Number(value);
+    return value;
+  });
+
 const EnvSchema = z
   .object({
     NODE_ENV: z.enum(['development', 'production', 'test']).default('development'),
     PORT: z.coerce.number().int().min(1).max(65535).default(3000),
-    PUBLIC_BASE_URL: originUrl.default('http://localhost:3000'),
+    PUBLIC_BASE_URL: originUrl.optional(),
+    /** Set by Render automatically: https://<service>.onrender.com */
+    RENDER_EXTERNAL_URL: originUrl.optional(),
+    /** Set by Render automatically ("true"). */
+    RENDER: z.string().optional(),
+    TRUST_PROXY: trustProxy.optional(),
+
+    MEMBERS_FILE: z.string().optional(),
+    MEMBER_OVERRIDES_FILE: z.string().optional(),
+    STORAGE_DIR: z.string().optional(),
+    MAIL_PREVIEW_DIR: z.string().optional(),
 
     MONGODB_URI: z.string().optional(),
     MONGODB_DB: z.string().default('adn_matcher'),
 
     OPENAI_API_KEY: z.string().optional(),
     OPENAI_MODEL: z.string().default('gpt-6-luna'),
+    OPENAI_BASE_URL: httpUrl.optional(),
     OPENAI_TIMEOUT_MS: z.coerce.number().int().positive().default(10_000),
     AI_ENABLED: z.stringbool().default(true),
     MAX_AI_CALLS_PER_SESSION: z.coerce.number().int().min(0).default(20),
@@ -108,13 +131,30 @@ export type EmailMode = 'preview' | 'redirect' | 'live';
 export interface Config {
   nodeEnv: 'development' | 'production' | 'test';
   port: number;
-  /** Origin of this server, for example https://assistant.example.com. */
+  /** Origin of this server: PUBLIC_BASE_URL, else RENDER_EXTERNAL_URL, else http://localhost:PORT. */
   publicBaseUrl: string;
+  /** Where the public URL came from (for the startup log). */
+  publicBaseUrlSource: 'PUBLIC_BASE_URL' | 'RENDER_EXTERNAL_URL' | 'default';
+  /** Running on Render (RENDER=true): behind Render's proxy. */
+  platform: 'render' | 'other';
+  /** Express "trust proxy" setting. */
+  trustProxy: boolean | number | string;
+  paths: {
+    membersFile: string;
+    overridesFile: string;
+    countiesFile: string;
+    storageDir: string;
+    mailPreviewDir: string;
+  };
   mongodb: { uri?: string; db: string };
   ai: {
+    /** AI_ENABLED (the setting). */
     enabled: boolean;
+    /** AI_ENABLED and a key: the AI is actually used. */
+    available: boolean;
     apiKey?: string;
     model: string;
+    baseUrl?: string;
     timeoutMs: number;
     maxCallsPerSession: number;
     storeTranscripts: boolean;
@@ -148,6 +188,12 @@ export class ConfigError extends Error {
   override name = 'ConfigError';
 }
 
+/** A path from the environment, relative to the repo root unless absolute. */
+function repoPath(value: string | undefined, fallback: string): string {
+  if (!value) return fallback;
+  return isAbsolute(value) ? value : resolve(repoRoot, value);
+}
+
 /** Parses environment variables into a Config. Empty values count as unset. Throws ConfigError. */
 export function loadConfig(source: Record<string, string | undefined>): Config {
   const cleaned: Record<string, string> = {};
@@ -162,16 +208,41 @@ export function loadConfig(source: Record<string, string | undefined>): Config {
     throw new ConfigError(`Invalid settings in .env:\n${z.prettifyError(parsed.error)}`);
   }
   const env = parsed.data;
+  const platform = env.RENDER === 'true' ? 'render' : 'other';
+
+  const publicBaseUrlSource = env.PUBLIC_BASE_URL
+    ? 'PUBLIC_BASE_URL'
+    : env.RENDER_EXTERNAL_URL
+      ? 'RENDER_EXTERNAL_URL'
+      : 'default';
+  const publicBaseUrl =
+    env.PUBLIC_BASE_URL ?? env.RENDER_EXTERNAL_URL ?? `http://localhost:${env.PORT}`;
 
   return {
     nodeEnv: env.NODE_ENV,
     port: env.PORT,
-    publicBaseUrl: env.PUBLIC_BASE_URL,
+    publicBaseUrl,
+    publicBaseUrlSource,
+    platform,
+    // Render's proxy sits in front of the app; elsewhere only a proxy on this machine is trusted.
+    trustProxy: env.TRUST_PROXY ?? (platform === 'render' ? true : 'loopback'),
+    paths: {
+      membersFile: repoPath(env.MEMBERS_FILE, resolve(repoRoot, 'data', 'members.csv')),
+      overridesFile: repoPath(
+        env.MEMBER_OVERRIDES_FILE,
+        resolve(repoRoot, 'data', 'member-overrides.json'),
+      ),
+      countiesFile: resolve(repoRoot, 'data', 'us-counties-2020.csv'),
+      storageDir: repoPath(env.STORAGE_DIR, resolve(repoRoot, '.data')),
+      mailPreviewDir: repoPath(env.MAIL_PREVIEW_DIR, resolve(serverRoot, '.mail-preview')),
+    },
     mongodb: { uri: env.MONGODB_URI, db: env.MONGODB_DB },
     ai: {
       enabled: env.AI_ENABLED,
+      available: env.AI_ENABLED && Boolean(env.OPENAI_API_KEY),
       apiKey: env.OPENAI_API_KEY,
       model: env.OPENAI_MODEL,
+      baseUrl: env.OPENAI_BASE_URL,
       timeoutMs: env.OPENAI_TIMEOUT_MS,
       maxCallsPerSession: env.MAX_AI_CALLS_PER_SESSION,
       storeTranscripts: env.STORE_TRANSCRIPTS,
@@ -211,6 +282,17 @@ export function configWarnings(config: Config): string[] {
     warnings.push(
       'ALLOWED_EMBED_ORIGINS=* lets any site show the widget. Fine for the first GrowthZone test; narrow it before launch.',
     );
+  }
+  if (config.ai.enabled && !config.ai.apiKey) {
+    warnings.push(
+      'AI_ENABLED is on but OPENAI_API_KEY is not set: typed answers fall back to buttons.',
+    );
+  }
+  if (config.email.mode !== 'preview' && !config.email.smtp.host) {
+    warnings.push(`EMAIL_MODE=${config.email.mode} but SMTP_HOST is not set: emails will fail.`);
+  }
+  if (config.email.mode === 'live' && !config.email.tracyEmail) {
+    warnings.push('EMAIL_MODE=live but TRACY_EMAIL is not set: the Email Tracy form cannot be sent.');
   }
   return warnings;
 }

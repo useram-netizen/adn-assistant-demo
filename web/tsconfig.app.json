@@ -8,7 +8,9 @@
     "jsx": "react-jsx",
     "types": ["vite/client"],
     "paths": {
-      "@adn/copy": ["../server/src/config/copy.ts"]
+      "@adn/copy": ["../server/src/config/copy.ts"],
+      "@adn/taxonomy": ["../server/src/config/taxonomy.ts"],
+      "@adn/api": ["../server/src/shared/api.ts"]
     },
     "noEmit": true
   },

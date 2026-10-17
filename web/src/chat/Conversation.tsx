@@ -1,121 +1,145 @@
-import { useEffect, useReducer, useRef, type ReactNode } from 'react';
-import { canGoBack, conversationReducer, initialConversation } from '../flow/conversation';
-import { fallbackReply, stepView } from '../flow/steps';
+import { copy } from '@adn/copy';
+import { useEffect, useLayoutEffect, useRef, useSyncExternalStore, type ReactNode } from 'react';
+import type { ChatController } from '../flow/controller';
+import type { ChatState, StepId } from '../flow/types';
 import type { PublicConfig } from '../lib/api';
 import type { EmbedContext } from '../lib/embedContext';
 import { ChatLayout } from './ChatLayout';
 import { Composer } from './Composer';
-import { BotMessage, StepInput, TypingIndicator, VisitorMessage } from './Messages';
+import { BotMessage, SafetyCard, TypingIndicator, VisitorMessage } from './Messages';
+import { StepInput } from './StepInput';
 
 interface ConversationProps {
   embed: EmbedContext;
   config: PublicConfig;
-  /** How long the typing indicator shows before each bot message. */
-  typingDelayMs: number;
+  controller: ChatController;
 }
 
-const FOCUSABLE = 'button:not(:disabled), a[href], input:not(:disabled), textarea:not(:disabled)';
+const FOCUSABLE =
+  'button:not(:disabled), a[href], input:not(:disabled):not([type="hidden"]), textarea:not(:disabled)';
 
-export function Conversation({ embed, config, typingDelayMs }: ConversationProps) {
-  const [state, dispatch] = useReducer(conversationReducer, undefined, initialConversation);
+/** Long screens: scroll to the start of the question rather than to the bottom. */
+const LONG_STEPS: ReadonlySet<StepId> = new Set(['results', 'category_help', 'contact', 'tracy']);
+
+/** The text box's hint at the steps where typing is the answer. */
+function placeholderFor(step: StepId | null): string {
+  if (step === 'county_help') return copy.steps.countyHelp.placeholder;
+  if (step === 'situation') return copy.steps.situation.placeholder;
+  return copy.widget.inputPlaceholder;
+}
+
+export function Conversation({ embed, config, controller }: ConversationProps) {
+  const state = useSyncExternalStore<ChatState>(controller.subscribe, controller.getState);
   const logRef = useRef<HTMLDivElement>(null);
   const inputRef = useRef<HTMLDivElement>(null);
   const textareaRef = useRef<HTMLTextAreaElement>(null);
-  const appliedFocus = useRef(0);
+  const appliedSeq = useRef(0);
+  const appliedRetry = useRef<unknown>(null);
 
-  const current = state.turns.at(-1);
-  const currentStep = current?.step;
-  const currentView = current ? stepView(current.step, config) : null;
-
-  // The bot "types" for a moment, then shows the next step or its reply.
+  // Starts once; safe if React runs this twice in development.
   useEffect(() => {
-    const pending = state.pending;
-    if (!pending) return;
-    const timer = setTimeout(() => {
-      if (pending.kind === 'step') {
-        dispatch({ type: 'reveal' });
-      } else if (currentStep) {
-        dispatch({ type: 'reply', text: fallbackReply(stepView(currentStep, config)) });
-      }
-    }, typingDelayMs);
-    return () => clearTimeout(timer);
-  }, [state.pending, currentStep, config, typingDelayMs]);
+    controller.start();
+  }, [controller]);
 
-  // After the visitor acts, move focus to the new input (or back to the text box).
+  // After the visitor acts, focus goes to the new input (or stays in the text box when they
+  // were typing). It never moves on first load, and never out of a box with text in it.
   useEffect(() => {
-    const request = state.focus;
-    if (!request || state.pending || request.seq === appliedFocus.current) return;
-    appliedFocus.current = request.seq;
-    if (request.target === 'composer') {
-      textareaRef.current?.focus({ preventScroll: true });
+    if (state.busy || state.stepSeq === appliedSeq.current) return;
+    appliedSeq.current = state.stepSeq;
+    if (state.focus === 'none') return;
+    const textarea = textareaRef.current;
+    if (state.focus === 'composer') {
+      textarea?.focus({ preventScroll: true });
       return;
     }
-    const target = inputRef.current?.querySelector<HTMLElement>(FOCUSABLE) ?? logRef.current;
-    target?.focus({ preventScroll: true });
-  }, [state.focus, state.pending]);
-
-  const transcript: ReactNode[] = [];
-  let questionId: string | undefined;
-  for (const turn of state.turns) {
-    const view = stepView(turn.step, config);
-    view.messages.forEach((text, index) => {
-      questionId = `adn-m${turn.id}-${index}`;
-      transcript.push(
-        <BotMessage key={questionId} id={questionId}>
-          {text}
-        </BotMessage>,
-      );
+    if (textarea && document.activeElement === textarea && textarea.value !== '') return;
+    const first = inputRef.current?.querySelector<HTMLElement>(FOCUSABLE) ?? null;
+    // On a touch screen, don't pop up the keyboard just because a dropdown comes first.
+    const coarse = window.matchMedia?.('(pointer: coarse)').matches ?? false;
+    const typing = first?.matches('input, textarea') ?? false;
+    (typing && coarse ? inputRef.current : (first ?? inputRef.current))?.focus({
+      preventScroll: true,
     });
-    for (const aside of turn.asides) {
-      transcript.push(<VisitorMessage key={`said${aside.id}`}>{aside.text}</VisitorMessage>);
-      if (aside.reply) {
-        questionId = `adn-r${aside.id}`;
-        transcript.push(
-          <BotMessage key={questionId} id={questionId}>
-            {aside.reply}
-          </BotMessage>,
+  }, [state.busy, state.stepSeq, state.focus]);
+
+  // After a failure, focus the Try again button so keyboard users aren't left behind.
+  useEffect(() => {
+    if (!state.retry || appliedRetry.current === state.retry) return;
+    appliedRetry.current = state.retry;
+    inputRef.current?.querySelector<HTMLElement>('button')?.focus({ preventScroll: true });
+  }, [state.retry]);
+
+  const lastBot = [...state.items].reverse().find((item) => item.kind === 'bot');
+  const questionId = lastBot ? `adn-m${lastBot.id}` : undefined;
+
+  // Long screens start at their question.
+  const scrollToQuestion = !state.busy && state.step !== null && LONG_STEPS.has(state.step);
+  useLayoutEffect(() => {
+    if (!scrollToQuestion || !questionId) return;
+    const log = logRef.current;
+    const question = document.getElementById(questionId);
+    if (!log || !question) return;
+    const offset = question.getBoundingClientRect().top - log.getBoundingClientRect().top;
+    log.scrollTop += offset - 8;
+  }, [scrollToQuestion, questionId, state.stepSeq]);
+
+  const transcript: ReactNode[] = state.items.map((item) => {
+    switch (item.kind) {
+      case 'bot':
+        return (
+          <BotMessage key={item.id} id={`adn-m${item.id}`}>
+            {item.text}
+          </BotMessage>
         );
-      }
+      case 'visitor':
+        return <VisitorMessage key={item.id}>{item.text}</VisitorMessage>;
+      case 'safety':
+        return <SafetyCard key={item.id} onLinkClick={() => controller.trackLink('safety')} />;
     }
-    if (turn.answer) {
-      transcript.push(
-        <VisitorMessage key={`answer${turn.id}`}>{turn.answer.label}</VisitorMessage>,
-      );
-    }
-  }
+  });
+
+  const formShowing = state.step === 'contact' || state.step === 'tracy';
 
   return (
     <ChatLayout
       embed={embed}
       privacyUrl={config.links.privacy}
-      reportHeight={state.turns.length > 0}
-      scrollKey={state}
+      reportHeight={state.items.length > 0}
+      scrollKey={`${state.items.length}|${state.step ?? ''}|${state.busy}|${state.confirm ? 1 : 0}|${state.retry ? 1 : 0}`}
+      pinToBottom={!scrollToQuestion}
       logRef={logRef}
       composer={
         <Composer
-          busy={state.pending !== null}
-          canGoBack={canGoBack(state)}
-          onBack={() => dispatch({ type: 'back' })}
-          onRestart={() => dispatch({ type: 'restart' })}
-          onSay={(text) => dispatch({ type: 'say', text })}
+          busy={state.busy}
+          hideText={formShowing}
+          placeholder={placeholderFor(state.step)}
+          canGoBack={controller.canGoBack}
+          onBack={() => controller.back()}
+          onRestart={() => controller.restart()}
+          onSay={(text) => controller.say(text)}
           textareaRef={textareaRef}
         />
       }
     >
-      {transcript}
-      {state.pending ? (
+      <div
+        className="adn-messages"
+        role="log"
+        aria-live="polite"
+        aria-relevant="additions"
+        aria-label={copy.widget.conversationLabel}
+      >
+        {transcript}
+      </div>
+      {state.busy ? (
         <TypingIndicator />
       ) : (
-        current &&
-        currentView &&
-        !current.answer && (
-          <StepInput
-            ref={inputRef}
-            view={currentView}
-            labelledBy={questionId}
-            onChoose={(option) => dispatch({ type: 'choose', option })}
-          />
-        )
+        <StepInput
+          ref={inputRef}
+          state={state}
+          controller={controller}
+          links={config.links}
+          labelledBy={questionId}
+        />
       )}
     </ChatLayout>
   );

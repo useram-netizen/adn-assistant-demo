@@ -29,7 +29,8 @@ const BODY_ERROR_CODES: Record<string, string> = {
  * client errors are not logged in detail, because a parse error message can contain part
  * of the request body (which may hold personal details).
  */
-export const errorHandler: ErrorRequestHandler = (err, req, res, next) => {
+// Express recognises error handlers by their four parameters, so _next must stay.
+export const errorHandler: ErrorRequestHandler = (err, req, res, _next) => {
   const info = (typeof err === 'object' && err !== null ? err : {}) as HttpErrorLike;
   const rawStatus = Number(info.status ?? info.statusCode);
   const status = rawStatus >= 400 && rawStatus < 600 ? rawStatus : 500;
@@ -46,7 +47,9 @@ export const errorHandler: ErrorRequestHandler = (err, req, res, next) => {
   }
 
   if (res.headersSent) {
-    next(err);
+    // Too late for an error response. Don't hand it to Express's default handler, which would
+    // print the error unredacted: close the connection (the error is logged above).
+    req.socket.destroy();
     return;
   }
 

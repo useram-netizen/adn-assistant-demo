@@ -9,10 +9,9 @@ coverage/
 .env.*
 !.env.example
 
-# The client's member list (names and emails) stays off GitHub. The live server doesn't
-# need it; the import reads it from the computer it runs on.
-data/members*.csv
-data/members*.xlsx
+# Leads, gaps and events saved as JSON files when MONGODB_URI is not set (STORAGE_DIR).
+# They contain visitors' contact details: never commit them.
+.data/
 
 # Email previews written in EMAIL_MODE=preview
 server/.mail-preview/
