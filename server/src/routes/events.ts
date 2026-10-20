@@ -1,7 +1,7 @@
 import { Router } from 'express';
 import type { Config } from '../config/env.js';
 import type { EventRecord, Store } from '../domain/types.js';
-import { eventsBody } from '../events/schemas.js';
+import { eventsBody, type ValidEventsBody } from '../events/schemas.js';
 import { log } from '../lib/log.js';
 import { FixedWindowCounter, RATE_LIMITS, rateLimit } from '../security/rateLimit.js';
 import { sendValidationError } from './validate.js';
@@ -64,6 +64,8 @@ export function eventsRouter({ config, store, rateLimitEnabled }: EventsRouterDe
       };
     });
 
+    reportClientErrors(site, events);
+
     try {
       await store.saveEvents(records);
     } catch (error) {
@@ -74,4 +76,23 @@ export function eventsRouter({ config, store, rateLimitEnabled }: EventsRouterDe
   });
 
   return router;
+}
+
+/**
+ * Requests that failed in a visitor's browser never reach this server's own log. The widget sends
+ * them as api_error events once it can; one line per batch puts them in the log (for example
+ * "states:0:network" when the visitor's connection dropped). Codes only, nothing personal.
+ */
+function reportClientErrors(site: string, events: ValidEventsBody['events']): void {
+  const failures = events.flatMap((event) =>
+    event.type === 'api_error'
+      ? [`${event.data.call}:${event.data.status}:${event.data.code}`]
+      : [],
+  );
+  if (failures.length === 0) return;
+  log.warn('client_api_errors', {
+    site,
+    count: failures.length,
+    first: failures.slice(0, 5).join(' '),
+  });
 }

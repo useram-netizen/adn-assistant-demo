@@ -67,7 +67,8 @@ test.describe('inline embed (the default)', () => {
       widget.getByRole('link', { name: new RegExp(copy.steps.proInfo.joinButton) }),
     ).toHaveAttribute('href', JOIN_URL);
 
-    await widget.getByRole('button', { name: copy.widget.startOver }).click();
+    // The composer's Start over (the professional path also offers one in the conversation).
+    await widget.locator('.adn-nav').getByRole('button', { name: copy.widget.startOver }).click();
     await expect(widget.getByRole('button', { name: welcome.optionDivorce })).toBeVisible();
     await expect(widget.getByText(copy.steps.proInfo.message)).toHaveCount(0);
   });

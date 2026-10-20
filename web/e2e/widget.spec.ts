@@ -48,9 +48,9 @@ test('replies to typed text with the fallback message and the buttons', async ({
   await page.goto('/widget?site=divorceamicably');
   const box = page.getByRole('textbox', { name: copy.widget.inputLabel });
   await expect(page.getByText(welcome.message)).toBeVisible();
-  await box.fill('I need a mediator');
+  await box.fill('What is the weather like?');
   await box.press('Enter');
-  await expect(page.getByText('I need a mediator')).toBeVisible();
+  await expect(page.getByText('What is the weather like?')).toBeVisible();
   await expect(page.getByText(copy.fallback.didNotCatch)).toBeVisible();
   await expect(page.getByRole('button', { name: welcome.optionDivorce })).toBeVisible();
   await expect(box).toBeFocused();

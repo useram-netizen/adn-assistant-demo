@@ -76,6 +76,10 @@ export function stepOptions(step: string, context: OptionContext): OptionItem[] 
       ];
     case 'outside':
       return [{ id: 'tracy', label: copy.steps.outside.emailTracy }];
+    // The ends of the professional and UK paths: never without a way on.
+    case 'pro_info':
+    case 'uk':
+      return [{ id: 'restart', label: copy.steps.whatsNext.startOver }];
     case 'county':
       return [{ id: 'not_sure', label: copy.steps.county.notSure }];
     case 'county_confirm':

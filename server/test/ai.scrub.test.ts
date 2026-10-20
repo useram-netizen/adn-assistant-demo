@@ -129,6 +129,8 @@ describe('scrubContactDetails (rule 2)', () => {
       'one '.repeat(250),
     ];
     for (const text of awkward) {
+      // Once to set the patterns up (a one-off cost), then timed: a runaway pattern takes seconds.
+      scrubContactDetails(text);
       const start = performance.now();
       scrubContactDetails(text);
       expect(performance.now() - start, text.slice(0, 20)).toBeLessThan(250);

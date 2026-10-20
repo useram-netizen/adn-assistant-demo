@@ -26,6 +26,12 @@ The owner changed these decisions; the sections below are updated to match.
   - `results_shown` and `no_match` events are recorded by the server (from the search itself), not sent by the widget; every event value comes from a fixed list.
   - A name given in typed text ("my name is…", "I'm…", "this is…", "… here") is removed with the emails and phone numbers before text goes to OpenAI.
   - `STORE_TRANSCRIPTS` is not implemented: what visitors type is never stored (setting it to true only logs a warning).
+- **After Stephen's test (2026-10-20):**
+  - What a visitor types ahead of the questions is remembered: interpret also returns the kind of professional, the state and the place mentioned (all checked by the server), and the widget confirms each at its own question ("Are you in Massachusetts?", "That sounds like Suffolk County", "Shall I look for mediators?").
+  - Typed requests that don't answer the question are acknowledged and the question is asked again; the AI never says it can't provide a list of professionals.
+  - Without the AI, keywords still understand the common requests (`ai/keywords.ts`).
+  - The widget tries requests that change nothing again after a dropped connection, says plainly when it can't connect, and reports failed requests as `api_error` events (logged as `client_api_errors`).
+  - The professional and UK ends also offer Start over, so neither is a dead end.
 
 ## Files I've given you
 - data/members.csv: the client's member list, exported from their Google Sheet. Treat it as input only and never edit it. Later updates may arrive as .csv or .xlsx, so the import must accept both. It is committed to the private repo, and the server loads it at startup (`MEMBERS_FILE`).

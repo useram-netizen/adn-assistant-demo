@@ -1,7 +1,7 @@
-import type { InterpretResponse, InterpretStep, SituationResponse } from '@adn/api';
+import type { Hints, InterpretResponse, InterpretStep, SituationResponse } from '@adn/api';
 import { copy, fill } from '@adn/copy';
 import { hasSubtypes, isCategoryKey, isStageKey, type CategoryKey } from '@adn/taxonomy';
-import { ApiError, type Api, type PublicConfig } from '../lib/api';
+import { ApiError, isConnectionProblem, type Api, type PublicConfig } from '../lib/api';
 import type { EmbedMode } from '../lib/embedContext';
 import type { Tracker } from '../lib/events';
 import { contactFieldsOf, emptyContact, joinNames, prefillMessage } from './form';
@@ -12,8 +12,10 @@ import {
   SHOW_MORE_STEP,
   type Answers,
   type ChatState,
+  type Confirm,
   type ContactValues,
   type Item,
+  type Remembered,
   type Snapshot,
   type StepId,
 } from './types';
@@ -32,7 +34,16 @@ export interface ChatDeps {
 interface ShowOptions {
   /** Say these instead of the step's usual question. */
   messages?: string[];
+  /** The step asks this Yes or No question itself ("Are you in Massachusetts?"). */
+  confirm?: Confirm;
 }
+
+const NOTHING_REMEMBERED: Remembered = {
+  category: null,
+  state: null,
+  place: null,
+  placeState: null,
+};
 
 const emptyAnswers = (): Answers => ({
   state: null,
@@ -58,6 +69,7 @@ function initialState(safetyShown = false, lists?: ChatState['lists']): ChatStat
     entry: null,
     safetyShown,
     texts: [],
+    remembered: NOTHING_REMEMBERED,
     analysis: null,
     lists: lists ?? { states: [], counties: [], countiesFor: null },
     countyCandidate: null,
@@ -86,16 +98,6 @@ const INTERPRET_STEPS: Partial<Record<StepId, InterpretStep>> = {
 const ACCEPT_DIRECTLY = new Set<StepId>(['welcome', 'stage']);
 /** Options that are never asked about with "Did you mean…?". */
 const NO_CONFIRM = new Set(['not_sure', 'more', 'any', 'see_all']);
-
-/** The messages that do not need the AI (the server's fallback, and the AI being down). */
-const UNCLEAR: InterpretResponse = {
-  kind: 'unclear',
-  optionId: null,
-  reply: '',
-  safety: false,
-  sharesSituation: false,
-  source: 'fallback',
-};
 
 function fallbackAnalysis(text: string): SituationResponse {
   return {
@@ -298,16 +300,24 @@ export class ChatController {
       step: snapshot.step,
       answers: snapshot.answers,
       texts: snapshot.texts,
+      remembered: snapshot.remembered,
       analysis: snapshot.analysis,
       results: snapshot.results,
       recommendations: snapshot.recommendations,
       countyCandidate: snapshot.countyCandidate,
       form: snapshot.form ? { ...snapshot.form, submitting: false, error: null } : null,
       done: null,
-      confirm: null,
+      // A question the step asked itself ("Are you in Massachusetts?") is asked again.
+      confirm: snapshot.confirm,
       retry: null,
       busy: false,
-      entry: { itemsLen: items.length, texts: snapshot.texts, analysis: snapshot.analysis },
+      entry: {
+        itemsLen: items.length,
+        texts: snapshot.texts,
+        analysis: snapshot.analysis,
+        remembered: snapshot.remembered,
+        confirm: snapshot.confirm,
+      },
       stepSeq: s.stepSeq + 1,
       focus: 'input',
     });
@@ -401,6 +411,10 @@ export class ChatController {
       case 'outside':
         this.go('tracy', { tracyReason: 'outside' });
         break;
+      case 'pro_info':
+      case 'uk':
+        if (id === 'restart') this.restart();
+        break;
       case 'no_match':
         if (id === 'tracy') this.go('tracy', { tracyReason: 'no_match' });
         else if (id === 'another') this.go('category');
@@ -435,19 +449,31 @@ export class ChatController {
         ...(apiStep === 'county' && answers.state ? { state: answers.state } : {}),
         ...(apiStep === 'subcategory' && answers.category ? { category: answers.category } : {}),
       });
-    } catch {
-      // The AI is down or slow: buttons only.
-      result = UNCLEAR;
+    } catch (error) {
+      if (epoch !== this.epoch) return;
+      // No answer (the connection) or a fault: say which, and keep the question so they can try
+      // again or pick. "I didn't catch that" would blame the visitor's words.
+      await this.botSays([this.problemMessage(error)], epoch);
+      return;
     }
     if (epoch !== this.epoch) return;
 
     if (result.safety) this.showSafety(result.source === 'ai' ? 'ai' : 'keyword');
     if (result.sharesSituation) this.addSituationText(text);
+    const learned = this.remember(result.hints);
 
     if (result.kind === 'option' && result.optionId) {
       const label = optionLabel(step, result.optionId, this.state);
       if (label !== null) {
-        if (result.reply && !(await this.botSays([result.reply], epoch))) return;
+        // "I need a divorce attorney" at the first question: say what we'll do about it.
+        const reply =
+          result.reply ||
+          (step === 'welcome' && result.optionId === 'divorce' && learned.category
+            ? fill(copy.steps.welcome.ackCategory, {
+                categoryWithArticle: copy.categoriesWithArticle[learned.category],
+              })
+            : '');
+        if (reply && !(await this.botSays([reply], epoch))) return;
         // A bare county name may be a city ("Houston"): the visitor confirms those.
         const exact = result.source === 'exact' && (step !== 'county' || namesACounty(text));
         const direct = ACCEPT_DIRECTLY.has(step) || exact;
@@ -464,6 +490,19 @@ export class ChatController {
       }
     } else if (result.kind === 'question' && result.reply) {
       if (!(await this.botSays([result.reply, ...this.questionFor(step)], epoch))) return;
+      await this.refreshAnalysisAfterSharing(step, epoch);
+      return;
+    }
+
+    // Not an answer to this question, but something to use later ("I need a divorce attorney"
+    // at the state question): say so, and ask the question again.
+    if (!result.safety && (learned.category || learned.place || learned.state)) {
+      const noted = learned.category
+        ? fill(copy.fallback.notedCategory, {
+            categoryPlural: copy.categoriesPlural[learned.category],
+          })
+        : copy.fallback.notedPlace;
+      if (!(await this.botSays([noted, ...this.questionFor(step)], epoch))) return;
       await this.refreshAnalysisAfterSharing(step, epoch);
       return;
     }
@@ -496,6 +535,7 @@ export class ChatController {
     const { answers } = this.state;
     if (!answers.state) return;
     let result;
+    let problem: unknown = null;
     try {
       result = await this.deps.api.county({
         sessionId: this.deps.sessionId,
@@ -503,8 +543,9 @@ export class ChatController {
         state: answers.state,
         text,
       });
-    } catch {
+    } catch (error) {
       result = null;
+      problem = error;
     }
     if (epoch !== this.epoch) return;
     if (result?.safety) this.showSafety('ai');
@@ -514,8 +555,16 @@ export class ChatController {
       this.go('county_confirm');
       return;
     }
-    // Not found, or the AI is down: the county list.
-    this.go('county', {}, { messages: [copy.steps.countyHelp.notFound] });
+    // Not found, or no answer: the county list (which is already loaded).
+    this.go(
+      'county',
+      {},
+      {
+        messages: problem
+          ? [this.problemMessage(problem), copy.steps.countyHelp.pick]
+          : [copy.steps.countyHelp.notFound],
+      },
+    );
   }
 
   private async situation(text: string, epoch: number): Promise<void> {
@@ -593,6 +642,8 @@ export class ChatController {
       recommendations: s.recommendations,
       countyCandidate: s.countyCandidate,
       form: s.form && this.draft ? { ...s.form, values: this.draft } : s.form,
+      remembered: s.entry.remembered,
+      confirm: s.entry.confirm,
     };
   }
 
@@ -671,23 +722,36 @@ export class ChatController {
   }
 
   /** Prepares a step (loads what it needs), says its question, and makes it the current step. */
-  private async show(step: StepId, epoch: number, options: ShowOptions = {}): Promise<void> {
-    const retry = () => void this.run((next) => this.show(step, next, options));
+  private async show(step: StepId, epoch: number, given: ShowOptions = {}): Promise<void> {
+    const retry = () => void this.run((next) => this.show(step, next, given));
     try {
       let skipTo: StepId | null = null;
+      let options = given;
 
       switch (step) {
         case 'location':
           await this.ensureStates();
+          // They named a place there already: "Are you in Massachusetts?"
+          if (!given.messages) options = this.askRememberedState() ?? given;
           break;
-        case 'county':
-          if (this.state.answers.state) await this.ensureCounties(this.state.answers.state);
+        case 'county': {
+          const { state } = this.state.answers;
+          if (state) await this.ensureCounties(state);
+          // They named a city or ZIP code already: "That sounds like Suffolk County…"
+          if (state && !given.messages && (await this.findRememberedCounty(state, epoch))) {
+            skipTo = 'county_confirm';
+          }
           break;
+        }
         case 'situation':
           // The visitor already told us about their situation: don't ask again.
           if (this.state.texts.length > 0) skipTo = 'category';
           break;
         case 'category':
+          await this.ensureAnalysis(epoch);
+          // They said what they need already: "Shall I look for mediators?"
+          if (!given.messages) options = this.askRememberedCategory() ?? given;
+          break;
         case 'category_more':
           await this.ensureAnalysis(epoch);
           break;
@@ -705,17 +769,17 @@ export class ChatController {
           break;
       }
       if (epoch !== this.epoch) return;
-      if (skipTo) return this.show(skipTo, epoch, options);
+      if (skipTo) return this.show(skipTo, epoch);
 
       if (!(await this.botSays(options.messages ?? this.questionFor(step), epoch))) return;
-      this.finishShow(step, epoch);
+      this.finishShow(step, epoch, options.confirm ?? null);
     } catch (error) {
       this.fail(epoch, retry, error);
     }
   }
 
   /** Makes the step current, now that its messages are on screen. */
-  private finishShow(step: StepId, epoch: number): void {
+  private finishShow(step: StepId, epoch: number, confirm: Confirm | null = null): void {
     const { answers } = this.state;
     let form = null;
     if (step === 'contact' || step === 'tracy') {
@@ -758,7 +822,14 @@ export class ChatController {
       done: step === 'done' ? s.done : null,
       countyCandidate: step === 'county_confirm' ? s.countyCandidate : null,
       recommendations: step === 'category_help' ? s.recommendations : null,
-      entry: { itemsLen: s.items.length, texts: s.texts, analysis: s.analysis },
+      confirm,
+      entry: {
+        itemsLen: s.items.length,
+        texts: s.texts,
+        analysis: s.analysis,
+        remembered: s.remembered,
+        confirm,
+      },
     }));
     this.deps.tracker.track('step_viewed', { step });
     if (step === 'pro_info') this.deps.tracker.track('branch', { branch: 'pro' });
@@ -927,6 +998,104 @@ export class ChatController {
     return [first, copy.steps.whatsNext.message];
   }
 
+  // ---------------------------------------------------------------- What the visitor said ahead
+
+  /**
+   * Keeps the server's hints (rule 3: already checked there) for the questions still to come,
+   * unless that question was answered. Returns what is new, for the acknowledgement.
+   */
+  private remember(hints: Hints | undefined): {
+    category: CategoryKey | null;
+    state: boolean;
+    place: boolean;
+  } {
+    const none = { category: null, state: false, place: false };
+    if (!hints) return none;
+    const { answers, remembered } = this.state;
+    const category =
+      !answers.category && hints.category && isCategoryKey(hints.category) ? hints.category : null;
+    const state =
+      !answers.state && hints.state && /^[A-Z]{2}$/.test(hints.state) ? hints.state : null;
+    const place =
+      !answers.countyFips && hints.place && hints.place.length <= 60 ? hints.place : null;
+    const learned = {
+      category: category !== remembered.category ? category : null,
+      state: state !== null && state !== remembered.state,
+      place: place !== null && place !== remembered.place,
+    };
+    if (!category && !state && !place) return none;
+    this.set((s) => ({
+      remembered: {
+        category: category ?? s.remembered.category,
+        state: state ?? s.remembered.state,
+        place: place ?? s.remembered.place,
+        placeState: place ? (hints.state ?? s.answers.state) : s.remembered.placeState,
+      },
+    }));
+    return learned;
+  }
+
+  private forget(change: Partial<Remembered>): void {
+    this.set((s) => ({ remembered: { ...s.remembered, ...change } }));
+  }
+
+  /** "Are you in Massachusetts?" when they named a place there before this question. Asked once. */
+  private askRememberedState(): ShowOptions | null {
+    const code = this.state.remembered.state;
+    if (!code) return null;
+    this.forget({ state: null });
+    const known = this.state.lists.states.find((item) => item.code === code);
+    if (!known) return null;
+    return {
+      messages: [fill(copy.steps.location.confirmHint, { state: known.name })],
+      confirm: { step: 'location', optionId: known.code, label: known.name },
+    };
+  }
+
+  /** The county of a city or ZIP code they named before ("Boston": Suffolk County), if found. */
+  private async findRememberedCounty(state: string, epoch: number): Promise<boolean> {
+    const { place, placeState } = this.state.remembered;
+    // A place is only looked up in the state it was mentioned with (Boston, GA is not Boston).
+    if (!place || (placeState && placeState !== state)) return false;
+    this.forget({ place: null, placeState: null });
+    try {
+      const result = await this.deps.api.county({
+        sessionId: this.deps.sessionId,
+        site: this.deps.site,
+        state,
+        text: place,
+      });
+      if (epoch !== this.epoch || !result.countyFips || !result.countyName) return false;
+      this.set({ countyCandidate: { fips: result.countyFips, name: result.countyName } });
+      return true;
+    } catch {
+      // The county question works without it.
+      return false;
+    }
+  }
+
+  /** "You mentioned a mediator. Shall I look for mediators?" Asked once. */
+  private askRememberedCategory(): ShowOptions | null {
+    const category = this.state.remembered.category;
+    if (!category) return null;
+    this.forget({ category: null });
+    return {
+      messages: [
+        fill(copy.steps.category.confirmHint, {
+          categoryWithArticle: copy.categoriesWithArticle[category],
+          categoryPlural: copy.categoriesPlural[category],
+        }),
+      ],
+      confirm: { step: 'category', optionId: category, label: copy.categories[category] },
+    };
+  }
+
+  /** What to say when a request fails: the visitor's connection, a limit, or our fault. */
+  private problemMessage(error: unknown): string {
+    if (error instanceof ApiError && error.rateLimited) return copy.widget.rateLimited;
+    return isConnectionProblem(error) ? copy.widget.connectionError : copy.widget.requestError;
+  }
+
   // ---------------------------------------------------------------- Safety
 
   /** The static safety card, once per session (spec: "Safety"). */
@@ -985,10 +1154,7 @@ export class ChatController {
   /** A failure the visitor can recover from: a friendly message and a Try again button. */
   private fail(epoch: number, retry: () => void, error?: unknown): void {
     if (epoch !== this.epoch) return;
-    const message =
-      error instanceof ApiError && error.rateLimited
-        ? copy.widget.rateLimited
-        : copy.widget.requestError;
+    const message = this.problemMessage(error);
     this.set((s) => ({
       items: [...s.items, { id: this.nextId++, kind: 'bot', text: message }],
       step: null,

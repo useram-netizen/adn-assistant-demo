@@ -79,6 +79,21 @@ export interface Confirm {
   label: string;
 }
 
+/**
+ * What the visitor said before it was asked ("a mediator in the Boston area" at the first
+ * question), kept until that question comes up, where the visitor confirms it. Each value is
+ * used once. All of it comes from the server's checked hints (rule 3).
+ */
+export interface Remembered {
+  category: CategoryKey | null;
+  /** USPS code. */
+  state: string | null;
+  /** A city, town, county or ZIP code, for finding the county. */
+  place: string | null;
+  /** The state the place was mentioned with: the place is only looked up in that state. */
+  placeState: string | null;
+}
+
 /** What Back needs to show a step again, exactly as it was. */
 export interface Snapshot {
   step: StepId;
@@ -91,6 +106,9 @@ export interface Snapshot {
   recommendations: Recommendation[] | null;
   countyCandidate: CountyOption | null;
   form: FormState | null;
+  remembered: Remembered;
+  /** The question the step asked itself ("Are you in Massachusetts?"), waiting for Yes or No. */
+  confirm: Confirm | null;
 }
 
 export interface ChatState {
@@ -110,11 +128,19 @@ export interface ChatState {
   answers: Answers;
   history: Snapshot[];
   /** The step as it was when it started waiting (what Back returns to). */
-  entry: { itemsLen: number; texts: string[]; analysis: SituationResponse | null } | null;
+  entry: {
+    itemsLen: number;
+    texts: string[];
+    analysis: SituationResponse | null;
+    remembered: Remembered;
+    confirm: Confirm | null;
+  } | null;
   /** The safety card is shown once per session. */
   safetyShown: boolean;
   /** Everything the visitor said about their situation, from any step. */
   texts: string[];
+  /** What the visitor said ahead of the questions (see Remembered). */
+  remembered: Remembered;
   analysis: SituationResponse | null;
   lists: {
     states: StateOption[];

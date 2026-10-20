@@ -10,7 +10,7 @@ A chat-style assistant for the Amicable Divorce Network (ADN). Visitors answer a
 
 - **Members** come from [data/members.csv](data/members.csv) (a Google Sheet export), loaded into memory when the server starts and read again every 10 minutes. The import rules in the brief run in memory; there is no database for members. 211 members, 199 of them searchable.
 - **The conversation** is a set of questions: state (searchable dropdown), county (searchable dropdown), where they are in the process, an optional sentence about their situation, and the kind of professional. Then result cards (Platinum, Gold, then Silver; 6 at a time; pick up to 5), and a contact form.
-- **Typed messages** are understood by OpenAI (`gpt-6-luna`). The AI never decides anything on its own: every state, county and professional type it returns is checked against the real lists first. With the AI off or failing, the chat still works with buttons only.
+- **Typed messages** are understood by OpenAI (`gpt-6-luna`), at any point: "I'm looking for a mediator in the Boston area" is remembered, and the assistant then asks "Are you in Massachusetts?", finds Suffolk County and offers mediators, each confirmed by the visitor. The AI never decides anything on its own: every state, county and professional type it returns is checked against the real lists first. With the AI off or failing, keywords still understand the common requests ("I need a divorce attorney"), and the buttons always work.
 - **Leads, gaps and events** are saved as JSON files in `.data/` (or in MongoDB if `MONGODB_URI` is set; the files are then the safety net). On Render the files reset with each deploy.
 - **Emails** are saved as HTML files in `server/.mail-preview/` and never sent, unless `EMAIL_MODE` says otherwise (see below).
 
@@ -222,6 +222,7 @@ Notes:
 
 ## If something does not work
 
+- **A visitor sees "I couldn't connect just now".** Their browser got no answer from the server (a dropped connection, a captive wifi page, a blocking network). The widget already tried again. Once their connection is back, the server log shows a `client_api_errors` line saying which requests failed (for example `states:0:network`). If those lines appear for many visitors at once, look at the server.
 - **The AI does not understand typed messages.** The chat still works with buttons. Look in the server log for `ai_failed` or `ai_model_unavailable`: it says why and what to change (for example `OPENAI_MODEL` if the model is not available to the key, `OPENAI_API_KEY` if the key was rejected, or the OpenAI billing if the account has no credit). `GET /api/health` shows `"ai": "on"` or `"off"`.
 - **No professionals show up for a county.** That search is saved as a gap (`/api/admin/gaps.csv`) and the visitor is offered the Email Tracy form. `npm run import -- data/members.csv` shows who is not searchable and why.
 - **A member is missing.** Check the import report: members need a tier, a profession that is not only "Legal", a US state and an email, and (below Platinum) at least one county that was recognised.

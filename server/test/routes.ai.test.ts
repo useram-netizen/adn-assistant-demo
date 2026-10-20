@@ -39,6 +39,7 @@ describe('POST /api/ai/interpret', () => {
       reply: '',
       safety: false,
       sharesSituation: false,
+      hints: { category: null, state: null, place: null },
       source: 'exact',
     });
     expect(ai.calls).toHaveLength(0);
@@ -106,6 +107,96 @@ describe('POST /api/ai/interpret', () => {
       ai,
     );
     expect(res.body).toMatchObject({ kind: 'option', optionId: 'divorce', sharesSituation: true });
+  });
+
+  it('passes on what else the text says: the kind of professional, the state and the place', async () => {
+    const ai = fakeAi(() =>
+      ok(
+        interpretOut({
+          option_id: 'divorce',
+          reply: 'I can help you find a mediator near Boston.',
+          category: 'mediator',
+          state: 'ma',
+          place: ' Boston ',
+        }),
+      ),
+    );
+    const { res } = await post(
+      'interpret',
+      body({ step: 'welcome', text: "I'm looking for a mediator in the boston area" }),
+      ai,
+    );
+    expect(res.body).toMatchObject({
+      kind: 'option',
+      optionId: 'divorce',
+      reply: 'I can help you find a mediator near Boston.',
+      hints: { category: 'mediator', state: 'MA', place: 'Boston' },
+      source: 'ai',
+    });
+    // The AI was told the keys it may use.
+    const sent = ai.calls[0]?.input.data as { categories?: Array<{ key: string }> } | undefined;
+    expect(sent?.categories?.map((item) => item.key)).toContain('mediator');
+  });
+
+  it('drops hints that are not real: an unknown kind, a made-up state, a place that is not a place (rule 3)', async () => {
+    const ai = fakeAi(() =>
+      ok(
+        interpretOut({
+          kind: 'unclear',
+          category: 'lawyer',
+          state: 'ZZ',
+          place: 'x'.repeat(61),
+        }),
+      ),
+    );
+    const { res } = await post('interpret', body({ step: 'location', text: 'whatever' }), ai);
+    expect(res.body).toMatchObject({ hints: { category: null, state: null, place: null } });
+
+    const strange = fakeAi(() =>
+      ok(interpretOut({ kind: 'unclear', category: 42, state: ['GA'], place: '<b>Boston</b>' })),
+    );
+    const second = await post('interpret', body({ step: 'location', text: 'whatever' }), strange);
+    expect(second.res.body).toMatchObject({
+      kind: 'unclear',
+      hints: { category: null, state: null, place: 'b Boston b' },
+    });
+  });
+
+  it('still understands common requests from keywords when the AI is off or failing', async () => {
+    const cases: Array<[string, string, Record<string, unknown>]> = [
+      [
+        'welcome',
+        'I need a divorce attorney',
+        { optionId: 'divorce', hints: { category: 'attorney' } },
+      ],
+      [
+        'welcome',
+        "I'm looking for a mediator in the boston area",
+        { optionId: 'divorce', hints: { category: 'mediator', state: 'MA', place: 'Boston' } },
+      ],
+      ['welcome', "I'm a mediator, how do I join?", { optionId: 'professional' }],
+      ['location', 'I live in north carolina', { optionId: 'NC', hints: { state: 'NC' } }],
+      ['category', 'a mediator please', { optionId: 'mediator' }],
+      ['category_more', 'someone for bankruptcy', { optionId: 'bankruptcy_attorney' }],
+      // Not one of the step's options: noted for later, not taken as the answer.
+      [
+        'location',
+        'I need a divorce attorney',
+        { optionId: null, hints: { category: 'attorney' } },
+      ],
+    ];
+    for (const [step, text, expected] of cases) {
+      const { res } = await post(
+        'interpret',
+        body({ step, text }),
+        fakeAi(() => failed()),
+      );
+      expect(res.body, text).toMatchObject({
+        kind: expected.optionId ? 'option' : 'unclear',
+        source: expected.optionId ? 'keyword' : 'fallback',
+        ...expected,
+      });
+    }
   });
 
   it('falls back to "unclear" when the AI fails, with a normal 200', async () => {

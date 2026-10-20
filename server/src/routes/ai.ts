@@ -2,12 +2,15 @@ import { Router } from 'express';
 import { z } from 'zod';
 import { createStepSpecs, exactOption, INTERPRET_STEPS } from '../ai/options.js';
 import {
+  NO_HINTS,
   countyFromPlace,
   interpret,
   recommendCategories,
   situation,
   type AiOutcome,
+  type InterpretHints,
 } from '../ai/calls.js';
+import { keywordInterpret } from '../ai/keywords.js';
 import type { AiCallKind, AiClient } from '../ai/client.js';
 import { SessionBudget } from '../ai/limits.js';
 import { copy } from '../config/copy.js';
@@ -117,6 +120,12 @@ export function aiRouter({ config, geo, events, client, rateLimitEnabled }: AiRo
       }
     });
 
+  /** The AI's hints, with a state that really exists (rule 3). */
+  const checkedHints = (hints: InterpretHints): InterpretHints => ({
+    ...hints,
+    state: hints.state && geo.state(hints.state) ? hints.state : null,
+  });
+
   router.post('/ai/interpret', async (req, res) => {
     const parsed = interpretBody.safeParse(req.body);
     if (!parsed.success) return sendValidationError(res, parsed.error);
@@ -132,6 +141,7 @@ export function aiRouter({ config, geo, events, client, rateLimitEnabled }: AiRo
         reply: '',
         safety,
         sharesSituation: false,
+        hints: NO_HINTS,
         source: 'exact',
       };
       return void res.json(body);
@@ -140,23 +150,30 @@ export function aiRouter({ config, geo, events, client, rateLimitEnabled }: AiRo
     const result = await ask(req, { sessionId, site, kind: 'interpret' }, (ai) =>
       interpret(ai, { spec, text }),
     );
-    const body: InterpretResponse = result
-      ? {
-          kind: result.kind,
-          optionId: result.optionId,
-          reply: result.reply,
-          safety: safety || result.safetyConcern,
-          sharesSituation: result.sharesSituation,
-          source: 'ai',
-        }
-      : {
-          kind: 'unclear',
-          optionId: null,
-          reply: '',
-          safety,
-          sharesSituation: false,
-          source: 'fallback',
-        };
+    if (result) {
+      const body: InterpretResponse = {
+        kind: result.kind,
+        optionId: result.optionId,
+        reply: result.reply,
+        safety: safety || result.safetyConcern,
+        sharesSituation: result.sharesSituation,
+        hints: checkedHints(result.hints),
+        source: 'ai',
+      };
+      return void res.json(body);
+    }
+
+    // No AI: keywords still understand the common requests ("I need a divorce attorney").
+    const understood = keywordInterpret(spec, text, geo);
+    const body: InterpretResponse = {
+      kind: understood.optionId ? 'option' : 'unclear',
+      optionId: understood.optionId,
+      reply: '',
+      safety,
+      sharesSituation: false,
+      hints: understood.hints,
+      source: understood.optionId ? 'keyword' : 'fallback',
+    };
     res.json(body);
   });
 

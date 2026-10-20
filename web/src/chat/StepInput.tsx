@@ -111,10 +111,20 @@ export function StepInput({ state, controller, links, labelledBy, ref }: StepInp
         );
         break;
       case 'pro_info':
-        content = linkButton('join', links.join, copy.steps.proInfo.joinButton);
+        content = (
+          <>
+            {linkButton('join', links.join, copy.steps.proInfo.joinButton)}
+            {options(stepOptions(step, state))}
+          </>
+        );
         break;
       case 'uk':
-        content = linkButton('uk_site', links.ukSite, copy.steps.uk.button);
+        content = (
+          <>
+            {linkButton('uk_site', links.ukSite, copy.steps.uk.button)}
+            {options(stepOptions(step, state))}
+          </>
+        );
         break;
       case 'results':
         content = state.results && (

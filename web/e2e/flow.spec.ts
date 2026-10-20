@@ -235,13 +235,15 @@ test.describe('the branches', () => {
     await expect(link).toHaveAttribute('target', '_blank');
   });
 
-  test('professional: a welcome and a link to join', async ({ page }) => {
+  test('professional: a welcome, a link to join, and a way on (Start over)', async ({ page }) => {
     const chat = await open(page);
     await chat.button(welcome.optionProfessional).click();
     await expect(chat.lastBot()).toContainText(copy.steps.proInfo.message);
     await expect(
       chat.widget.getByRole('link', { name: new RegExp(copy.steps.proInfo.joinButton) }),
     ).toHaveAttribute('href', 'https://example.com/join');
+    await chat.widget.locator('.adn-options').getByRole('button', { name: 'Start over' }).click();
+    await expect(chat.button(welcome.optionDivorce)).toBeVisible();
   });
 
   test('somewhere else: Email Tracy', async ({ page }) => {
@@ -284,6 +286,83 @@ test.describe('the branches', () => {
     expect(
       leads(STORAGE_DIR).some((lead) => lead.kind === 'tracy' && lead.reason === 'no_match'),
     ).toBe(true);
+  });
+});
+
+test.describe('Stephen’s tests (2026-10-20)', () => {
+  test('"I’m looking for a mediator in the boston area" finds mediators in Suffolk County, Massachusetts', async ({
+    page,
+  }) => {
+    const chat = await open(page);
+    await chat.type("I'm looking for a mediator in the boston area");
+    await expect(
+      chat.widget.getByText('I can help you find a mediator near Boston.'),
+    ).toBeVisible();
+    await expect(chat.lastBot()).toHaveText(/Are you in Massachusetts\?/);
+    await chat.button('Yes').click();
+    await expect(chat.lastBot()).toHaveText(/That sounds like Suffolk County\. Is that right\?/);
+    await chat.button('Yes').click();
+    await expect(chat.lastBot()).toContainText(copy.steps.stage.message);
+    await chat.button(copy.steps.stage.options.ready).click();
+    await chat.button(copy.steps.situation.skip).click();
+    await expect(chat.lastBot()).toHaveText(
+      /You mentioned a mediator\. Shall I look for mediators\?/,
+    );
+    await chat.button('Yes').click();
+    await expect(
+      chat.widget.getByText('Here are mediators who serve Suffolk County, Massachusetts:'),
+    ).toBeVisible();
+    await expect(chat.widget.locator('.adn-card').first()).toBeVisible();
+  });
+
+  test('"I need a divorce attorney" at the state question is noted, not "I didn’t catch that"', async ({
+    page,
+  }) => {
+    const chat = await open(page);
+    await chat.button(welcome.optionDivorce).click();
+    await expect(chat.widget.getByRole('combobox', { name: 'Your state' })).toBeVisible();
+    await chat.type('I need a divorce attorney');
+    await expect(chat.widget.getByText("Got it, I'll look for divorce attorneys.")).toBeVisible();
+    await expect(chat.lastBot()).toContainText(copy.steps.location.message);
+    await expect(chat.widget.getByText(copy.fallback.didNotCatch)).toHaveCount(0);
+  });
+
+  test('a connection that drops for a moment goes unnoticed: the request is tried again', async ({
+    page,
+  }) => {
+    const chat = await open(page);
+    let dropped = 0;
+    await chat.page.route('**/api/states', async (route) => {
+      if (dropped < 2) {
+        dropped += 1;
+        return route.abort('internetdisconnected');
+      }
+      return route.continue();
+    });
+    await chat.button(welcome.optionDivorce).click();
+    await expect(chat.widget.getByRole('combobox', { name: 'Your state' })).toBeVisible();
+    expect(dropped).toBe(2);
+    await expect(chat.widget.getByText(copy.widget.connectionError)).toHaveCount(0);
+  });
+
+  test('a connection that stays down says so plainly, and Try again works once it is back', async ({
+    page,
+  }) => {
+    const chat = await open(page);
+    await chat.page.route('**/api/states', (route) => route.abort('internetdisconnected'));
+    await chat.button(welcome.optionDivorce).click();
+    await expect(chat.widget.getByText(copy.widget.connectionError)).toBeVisible();
+    await expect(chat.widget.getByText(copy.widget.requestError)).toHaveCount(0);
+
+    // Typed text while it is down: not "I didn't catch that".
+    await chat.page.route('**/api/ai/interpret', (route) => route.abort('internetdisconnected'));
+
+    await chat.page.unroute('**/api/states');
+    await chat.button(copy.widget.retry).click();
+    await expect(chat.widget.getByRole('combobox', { name: 'Your state' })).toBeVisible();
+    await chat.type('I live in Atlanta');
+    await expect(chat.lastBot()).toContainText(copy.widget.connectionError);
+    await expect(chat.widget.getByText(copy.fallback.didNotCatch)).toHaveCount(0);
   });
 });
 
@@ -434,7 +513,7 @@ test.describe('with the AI off: buttons only (AI_ENABLED=false)', () => {
 
   test('typed text is answered with the buttons again, not with an error', async ({ page }) => {
     const chat = await open(page, AI_OFF_HOST_ORIGIN);
-    await chat.type('I live in Atlanta');
+    await chat.type('What is the weather like?');
     await expect(chat.lastBot()).toContainText(copy.fallback.didNotCatch);
     await expect(chat.button(welcome.optionDivorce)).toBeVisible();
     // A name that is exactly an option still works without the AI.
@@ -442,6 +521,28 @@ test.describe('with the AI off: buttons only (AI_ENABLED=false)', () => {
     await expect(chat.widget.getByRole('combobox', { name: 'Your state' })).toBeVisible();
     await chat.type('Georgia');
     await expect(chat.lastBot()).toContainText('Which county in Georgia do you live in?');
+  });
+
+  test('common requests are still understood from keywords, and remembered for later', async ({
+    page,
+  }) => {
+    const chat = await open(page, AI_OFF_HOST_ORIGIN);
+    await chat.type('I need a divorce attorney in Atlanta');
+    await expect(chat.widget.getByText('I can help you find a divorce attorney.')).toBeVisible();
+    await expect(chat.lastBot()).toContainText('Are you in Georgia?');
+    await chat.button('Yes').click();
+    // Without the AI the city can't be placed in a county: the county question.
+    await expect(chat.lastBot()).toContainText('Which county in Georgia do you live in?');
+    await chat.pick('Your county', 'fulton', 'Fulton County');
+    await chat.button(copy.steps.stage.options.ready).click();
+    await chat.button(copy.steps.situation.skip).click();
+    await expect(chat.lastBot()).toContainText(
+      'You mentioned a divorce attorney. Shall I look for divorce attorneys?',
+    );
+    await chat.button('Yes').click();
+    await expect(
+      chat.widget.getByText('Here are divorce attorneys who serve Fulton County, Georgia:'),
+    ).toBeVisible();
   });
 
   test('the situation step says "Thank you for sharing that." and keeps the visitor’s own words for the form', async ({

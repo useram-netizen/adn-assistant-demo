@@ -1,7 +1,7 @@
 import { z } from 'zod';
 import { CATEGORY_KEYS, STAGE_KEYS, SUBTYPES } from '../config/taxonomy.js';
 import { siteSchema, sessionIdSchema } from '../routes/validate.js';
-import { STEP_IDS } from '../shared/api.js';
+import { API_CALL_NAMES, API_ERROR_CODES, STEP_IDS } from '../shared/api.js';
 
 /**
  * The usage events the widget may send (spec: "Tracking"). Each type has an exact shape and every
@@ -68,6 +68,14 @@ const eventSchemas = [
   z.strictObject({
     type: z.literal('safety_shown'),
     data: z.strictObject({ trigger: z.enum(['keyword', 'ai']) }),
+  }),
+  z.strictObject({
+    type: z.literal('api_error'),
+    data: z.strictObject({
+      call: z.enum(API_CALL_NAMES),
+      status: z.number().int().min(0).max(599),
+      code: z.enum(API_ERROR_CODES),
+    }),
   }),
 ] as const;
 

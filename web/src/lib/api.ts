@@ -28,6 +28,11 @@ const LINK_KEYS = ['join', 'ukSite', 'articles', 'podcast', 'booking', 'privacy'
 const REQUEST_TIMEOUT_MS = 15_000;
 /** The server allows the AI 10 s plus one retry, so wait a little longer than that. */
 const AI_TIMEOUT_MS = 28_000;
+/**
+ * Waits before trying again after a request got no answer (a dropped connection, a moment of
+ * bad wifi). Only requests that change nothing are tried again: never the contact forms.
+ */
+const RETRY_DELAYS_MS: readonly number[] = [700, 2_000];
 
 function httpLink(value: unknown): string | null {
   if (typeof value !== 'string') return null;
@@ -68,6 +73,16 @@ export class ApiError extends Error {
   get rateLimited(): boolean {
     return this.status === 429;
   }
+
+  /** No answer from the server at all: the connection, not the server (status 0). */
+  get connection(): boolean {
+    return this.status === 0 && this.code !== 'cancelled';
+  }
+}
+
+/** True for a request that got no answer at all (see ApiError.connection). */
+export function isConnectionProblem(error: unknown): boolean {
+  return error instanceof ApiError && error.connection;
 }
 
 export interface Api {
@@ -81,20 +96,60 @@ export interface Api {
   recommend(request: RecommendRequest): Promise<RecommendResponse>;
   lead(request: LeadRequest): Promise<LeadResponse>;
   tracy(request: TracyRequest): Promise<TracyResponse>;
-  /** Fire and forget: failures are ignored. `keepalive` lets it finish while the page closes. */
-  events(request: EventsRequest, keepalive?: boolean): Promise<void>;
+  /**
+   * Never throws: resolves false when the events did not get through (the tracker keeps them
+   * and tries again). `keepalive` lets it finish while the page closes.
+   */
+  events(request: EventsRequest, keepalive?: boolean): Promise<boolean>;
 }
 
 type FetchLike = (input: string, init?: RequestInit) => Promise<Response>;
 
+interface CallOptions {
+  timeoutMs?: number;
+  keepalive?: boolean;
+  /** How many times to try again after no answer, or a 502/503/504 (requests that change nothing). */
+  retries?: number;
+}
+
+const wait = (ms: number) => new Promise((resolve) => setTimeout(resolve, ms));
+
 /** The widget's calls to the server (same origin; no cookies, rule 4). */
-export function createApi(fetchImpl: FetchLike = (input, init) => fetch(input, init)): Api {
+export function createApi(
+  fetchImpl: FetchLike = (input, init) => fetch(input, init),
+  { retryDelaysMs = RETRY_DELAYS_MS }: { retryDelaysMs?: readonly number[] } = {},
+): Api {
+  /** One request, tried again after a dropped connection or a busy server when `retries` allows. */
   async function call<T>(
     method: 'GET' | 'POST',
     path: string,
     body?: unknown,
-    { timeoutMs = REQUEST_TIMEOUT_MS, keepalive = false } = {},
+    options: CallOptions = {},
   ): Promise<T> {
+    const retries = Math.min(options.retries ?? 0, retryDelaysMs.length);
+    for (let attempt = 0; ; attempt += 1) {
+      try {
+        return await callOnce<T>(method, path, body, options);
+      } catch (error) {
+        const again =
+          error instanceof ApiError &&
+          (error.code === 'network' || [502, 503, 504].includes(error.status));
+        if (!again || attempt >= retries) throw error;
+        await wait(retryDelaysMs[attempt] ?? 0);
+      }
+    }
+  }
+
+  async function callOnce<T>(
+    method: 'GET' | 'POST',
+    path: string,
+    body: unknown,
+    { timeoutMs = REQUEST_TIMEOUT_MS, keepalive = false }: CallOptions,
+  ): Promise<T> {
+    // The browser knows it is offline: say so without waiting for a timeout.
+    if (typeof navigator !== 'undefined' && navigator.onLine === false) {
+      throw new ApiError(0, 'offline');
+    }
     const controller = new AbortController();
     const timer = setTimeout(() => controller.abort(), timeoutMs);
     try {
@@ -129,7 +184,8 @@ export function createApi(fetchImpl: FetchLike = (input, init) => fetch(input, i
       return response.status === 204 ? (undefined as T) : ((await response.json()) as T);
     } catch (error) {
       if (error instanceof ApiError) throw error;
-      throw new ApiError(0, 'network');
+      // No answer: the wait ran out, or the request never got through.
+      throw new ApiError(0, controller.signal.aborted ? 'timeout' : 'network');
     } finally {
       clearTimeout(timer);
     }
@@ -151,11 +207,14 @@ export function createApi(fetchImpl: FetchLike = (input, init) => fetch(input, i
 
   return {
     async config() {
-      return parsePublicConfig(await call<unknown>('GET', '/api/config'));
+      return parsePublicConfig(
+        await call<unknown>('GET', '/api/config', undefined, { retries: 2 }),
+      );
     },
     states() {
       statesCache ??= cached(
-        async () => (await call<StatesResponse>('GET', '/api/states')).states,
+        async () =>
+          (await call<StatesResponse>('GET', '/api/states', undefined, { retries: 2 })).states,
         (value) => {
           statesCache = value;
         },
@@ -171,6 +230,8 @@ export function createApi(fetchImpl: FetchLike = (input, init) => fetch(input, i
               await call<CountiesResponse>(
                 'GET',
                 `/api/counties?state=${encodeURIComponent(state)}`,
+                undefined,
+                { retries: 2 },
               )
             ).counties,
           (value) => {
@@ -181,21 +242,26 @@ export function createApi(fetchImpl: FetchLike = (input, init) => fetch(input, i
       }
       return list;
     },
-    match: (request) => call('POST', '/api/match', request),
+    // A search and the AI calls change nothing, so they can be tried again.
+    match: (request) => call('POST', '/api/match', request, { retries: 2 }),
     interpret: (request) =>
-      call('POST', '/api/ai/interpret', request, { timeoutMs: AI_TIMEOUT_MS }),
-    county: (request) => call('POST', '/api/ai/county', request, { timeoutMs: AI_TIMEOUT_MS }),
+      call('POST', '/api/ai/interpret', request, { timeoutMs: AI_TIMEOUT_MS, retries: 1 }),
+    county: (request) =>
+      call('POST', '/api/ai/county', request, { timeoutMs: AI_TIMEOUT_MS, retries: 1 }),
     situation: (request) =>
-      call('POST', '/api/ai/situation', request, { timeoutMs: AI_TIMEOUT_MS }),
+      call('POST', '/api/ai/situation', request, { timeoutMs: AI_TIMEOUT_MS, retries: 1 }),
     recommend: (request) =>
-      call('POST', '/api/ai/recommend', request, { timeoutMs: AI_TIMEOUT_MS }),
+      call('POST', '/api/ai/recommend', request, { timeoutMs: AI_TIMEOUT_MS, retries: 1 }),
+    // Never tried again by themselves: a request that did arrive would be sent twice.
     lead: (request) => call('POST', '/api/leads', request),
     tracy: (request) => call('POST', '/api/contact-tracy', request),
     async events(request, keepalive = false) {
       try {
         await call('POST', '/api/events', request, { timeoutMs: 8_000, keepalive });
+        return true;
       } catch {
-        // Tracking never matters to the visitor.
+        // Tracking never matters to the visitor; the tracker tries again later.
+        return false;
       }
     },
   };

@@ -182,8 +182,9 @@ adminRouter({ config, store, directory }): Router           // GET /admin/stats,
 - **Options:** the server builds each step's options (see `InterpretRequest` in `shared/api.ts`) from geo, taxonomy and copy.
   - Exact-match shortcut: if the text equals an option's label or id (state name or code, county name with or without "County", category label), return it with `source: 'exact'` and no AI call.
 - **interpret:**
-  - Returns `{ kind, optionId, reply ≤50 words, safety, sharesSituation }`.
+  - Returns `{ kind, optionId, reply ≤50 words, safety, sharesSituation, hints }`.
   - An option id that isn't in the list → unclear.
+  - `hints` is what the text says for the questions still to come, whatever the step: `category` (a category key), `state` (a USPS code that exists in geo) and `place` (a city, county or ZIP code as written, plain text, at most 60 characters). "I'm looking for a mediator in the Boston area" at the welcome step → `divorce`, with hints mediator, MA, Boston. A professional the visitor already has ("my lawyer filed") is not a hint. The task tells the AI that the assistant shows matching professionals itself, so it never says it can't give a list.
   - `sharesSituation` is true when the visitor describes their own circumstances (for example "My husband and I decided to split. We have two kids…"), even if they also answered the question.
 - **countyFromPlace:** returns a FIPS code that must be in the state's list, or null.
 - **situation:** the reply is an acknowledgement of at most 40 words; `suggestedCategories` are 0–3 valid keys; the summary is at most 60 words, third person, with no names.
@@ -198,7 +199,7 @@ adminRouter({ config, store, directory }): Router           // GET /admin/stats,
   - text at most 1,000 characters
   - Over a limit → the fallback, never an error.
 - **Fallbacks (AI off, no key, failure or limit):**
-  - interpret → unclear (the exact match still works, and the keyword safety check always runs)
+  - interpret → keywords (`ai/keywords.ts`): the kind of professional ("a divorce attorney"), the welcome step's two answers, US state names and big cities. A match on one of the step's options is `source: 'keyword'` (confirmed like the AI's); otherwise unclear with the hints. The exact match still works, and the keyword safety check always runs.
   - county → null
   - situation → `copy.steps.situation.ack`, with the summary set to the visitor's own text and no suggestions
   - recommend → empty recommendations
@@ -207,6 +208,10 @@ adminRouter({ config, store, directory }): Router           // GET /admin/stats,
 ## Widget conversation design
 
 The whole conversation is `ChatController` (web/src/flow/controller.ts): plain TypeScript with no React in it, so the flow is tested without a browser (web/test/controller.test.ts uses a fake server). The React components only show its state and call its actions. Work that takes time (typing pauses, server calls) runs under an "epoch": Back, Start over and failures start a new epoch, so a late answer from the server can never land on a screen the visitor has left. The typing indicator (`busy`) stays on until the last run of the epoch ends, because a step that moves on from inside a run starts another one. Back restores a snapshot of the earlier step (its answers, transcript length, situation text, results and form draft).
+
+**What the visitor says ahead of the questions.** The interpret hints are kept in `ChatState.remembered` (cleared by Start over, restored by Back) and each is used once, at its own question, where the visitor confirms it: the location step asks "Are you in Massachusetts?"; the county step looks up the remembered place with `/api/ai/county` (only in the state it was mentioned with) and goes straight to "That sounds like Suffolk County. Is that right?"; the category step asks "You mentioned a mediator. Shall I look for mediators?". Typed text that answers nothing but says what the visitor needs is acknowledged ("Got it, I'll look for divorce attorneys.") and the question is asked again, never "Sorry, I didn't catch that".
+
+**Connection problems.** Requests that change nothing (config, states, counties, match, the AI calls) are tried again after a dropped connection or a 502/503/504 (after 0.7 s and 2 s); the contact forms never are. A request that still gets no answer says so ("I couldn't connect just now. Please check your internet connection and try again."), which is a different message from a fault on our side. Every failed request is recorded as an `api_error` event (call, status, reason; nothing the visitor typed); the tracker keeps events that could not be sent and sends them when the connection is back, and the server writes one `client_api_errors` warning per batch, so a visitor's dropped connection shows up in the server log.
 
 State lives in memory only.
 

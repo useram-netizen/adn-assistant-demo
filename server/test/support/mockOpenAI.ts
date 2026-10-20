@@ -19,9 +19,22 @@ interface Data {
 
 const has = (text: string, ...words: string[]) => words.every((word) => text.includes(word));
 
+/** What else the text says, like the real model's "category", "state" and "place". */
+function hintsOf(text: string) {
+  const category = text.includes('mediator')
+    ? 'mediator'
+    : text.includes('attorney') || text.includes('lawyer')
+      ? 'attorney'
+      : null;
+  const place = text.includes('boston') ? 'Boston' : text.includes('marietta') ? 'Marietta' : null;
+  const state = text.includes('boston') ? 'MA' : text.includes('marietta') ? 'GA' : null;
+  return { category, state, place };
+}
+
 function interpret(data: Data) {
   const text = (data.visitor_text ?? '').toLowerCase();
   const ids = new Set((data.options ?? []).map((option) => option.id));
+  const hints = hintsOf(text);
   const pick = (id: string, extra: Record<string, unknown> = {}) =>
     ids.has(id)
       ? {
@@ -30,6 +43,7 @@ function interpret(data: Data) {
           reply: '',
           safety_concern: false,
           shares_situation: false,
+          ...hints,
           ...extra,
         }
       : null;
@@ -39,9 +53,14 @@ function interpret(data: Data) {
     reply,
     safety_concern: false,
     shares_situation: false,
+    ...hints,
   });
 
   if (text.includes('atlanta')) return pick('GA');
+  if (has(text, 'looking for', 'mediator') && ids.has('divorce')) {
+    return pick('divorce', { reply: 'I can help you find a mediator near Boston.' });
+  }
+  if (text.includes('need a divorce attorney') && ids.has('divorce')) return pick('divorce');
   if (text.includes('london')) return pick('uk');
   if (has(text, 'mediator', 'join')) return pick('professional');
   if (has(text, 'hits me')) {
@@ -74,12 +93,13 @@ function interpret(data: Data) {
     reply: '',
     safety_concern: false,
     shares_situation: false,
+    ...hints,
   };
 }
 
 function countyFromPlace(data: Data) {
   const text = (data.visitor_text ?? '').toLowerCase();
-  const fips = text.includes('marietta') ? '13067' : null;
+  const fips = text.includes('marietta') ? '13067' : text.includes('boston') ? '25025' : null;
   const known = (data.counties ?? []).some((county) => county.fips === fips);
   return {
     county_fips: known ? fips : null,

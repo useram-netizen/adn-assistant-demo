@@ -137,7 +137,7 @@ export function fakeApi(overrides: Partial<Api> = {}): FakeApi {
       }),
     ),
     tracy: vi.fn(() => Promise.resolve({ ok: true as const, safety: false })),
-    events: vi.fn(() => Promise.resolve()),
+    events: vi.fn(() => Promise.resolve(true)),
     ...overrides,
   };
   return api as FakeApi;

@@ -136,6 +136,20 @@ export interface InterpretRequest {
   category?: CategoryKey;
 }
 
+/**
+ * What the visitor's text says beyond the current question, kept for later steps: the kind of
+ * professional they want, their state, and a city, town, county or ZIP code. Every value is
+ * checked by the server (a category key, a real state's code, short plain text), and the widget
+ * still asks the visitor to confirm each one when it gets to that question.
+ */
+export interface Hints {
+  category: CategoryKey | null;
+  /** USPS code of a US state or DC. */
+  state: string | null;
+  /** The place as the visitor wrote it ("Boston", "30060"), for the county lookup. */
+  place: string | null;
+}
+
 export interface InterpretResponse {
   kind: 'option' | 'question' | 'unclear';
   /** Always one of the step's option ids, or null. */
@@ -146,8 +160,13 @@ export interface InterpretResponse {
   safety: boolean;
   /** The text tells us about the visitor's situation: keep it as their situation. */
   sharesSituation: boolean;
-  /** exact = matched an option's name without AI (no need to confirm). */
-  source: 'exact' | 'ai' | 'fallback';
+  /** What else the text says (for the steps still to come). Missing from older servers. */
+  hints?: Hints;
+  /**
+   * exact = matched an option's name without AI (no need to confirm); keyword = understood from
+   * keywords because the AI was not available (confirmed like the AI's answers).
+   */
+  source: 'exact' | 'ai' | 'keyword' | 'fallback';
 }
 
 export interface CountyFromPlaceRequest {
@@ -289,9 +308,39 @@ export interface EventDataByType {
     link: 'join' | 'uk_site' | 'articles' | 'podcast' | 'booking' | 'privacy' | 'safety';
   };
   safety_shown: { trigger: 'keyword' | 'ai' };
+  /** A request from the widget that failed (so connection problems show up in the server log). */
+  api_error: { call: ApiCallName; status: number; code: ApiErrorCode };
 }
 
 export type EventType = keyof EventDataByType;
+
+/** The widget's server calls, as named in api_error events. */
+export const API_CALL_NAMES = [
+  'config',
+  'states',
+  'counties',
+  'match',
+  'interpret',
+  'county',
+  'situation',
+  'recommend',
+  'lead',
+  'tracy',
+] as const;
+export type ApiCallName = (typeof API_CALL_NAMES)[number];
+
+/** Why a widget request failed: no answer at all (network, timeout, offline) or the server's code. */
+export const API_ERROR_CODES = [
+  'network',
+  'timeout',
+  'offline',
+  'rate_limited',
+  'server_error',
+  'validation_failed',
+  'not_in_match',
+  'other',
+] as const;
+export type ApiErrorCode = (typeof API_ERROR_CODES)[number];
 
 /** Every screen of the conversation. The widget's steps and the events that name them agree. */
 export const STEP_IDS = [
@@ -330,6 +379,7 @@ export const CLIENT_EVENT_TYPES = [
   'pros_selected',
   'link_clicked',
   'safety_shown',
+  'api_error',
 ] as const satisfies readonly EventType[];
 
 export type ClientEventType = (typeof CLIENT_EVENT_TYPES)[number];

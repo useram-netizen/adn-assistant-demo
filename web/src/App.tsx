@@ -8,6 +8,7 @@ import { ChatController } from './flow/controller';
 import { createApi, loadPublicConfig, type Api, type PublicConfig } from './lib/api';
 import type { EmbedContext } from './lib/embedContext';
 import { createTracker, type Tracker } from './lib/events';
+import { withErrorReports } from './lib/reporting';
 import { newSessionId } from './lib/session';
 
 export const DEFAULT_TYPING_DELAY_MS = 350;
@@ -53,13 +54,15 @@ export function App({ embed, typingDelayMs = DEFAULT_TYPING_DELAY_MS, api, track
   const controller = useMemo(() => {
     if (!config) return null;
     const sessionId = newSessionId();
+    const events = tracker ?? createTracker(client, sessionId, embed.site);
     return new ChatController({
-      api: client,
+      // Failed requests are reported (as api_error events) so they show up in the server log.
+      api: withErrorReports(client, events),
       config,
       sessionId,
       site: embed.site,
       mode: embed.mode,
-      tracker: tracker ?? createTracker(client, sessionId, embed.site),
+      tracker: events,
       typingDelayMs,
     });
   }, [config, client, embed.site, embed.mode, tracker, typingDelayMs]);

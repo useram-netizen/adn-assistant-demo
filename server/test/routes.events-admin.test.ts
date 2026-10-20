@@ -1,6 +1,6 @@
 import { randomUUID } from 'node:crypto';
 import request from 'supertest';
-import { describe, expect, it } from 'vitest';
+import { describe, expect, it, vi } from 'vitest';
 import type { EventRecord } from '../src/domain/types.js';
 import { csvCell, gapsCsv } from '../src/routes/admin.js';
 import { testApp, testDeps } from './helpers.js';
@@ -144,6 +144,48 @@ describe('POST /api/events', () => {
     }
     // 400 are kept; the 9th and 10th batches were quietly ignored.
     expect((await deps.store.listEvents()).length).toBe(400);
+  });
+
+  it('takes requests that failed in the browser and puts them in the server log (codes only)', async () => {
+    const lines: string[] = [];
+    const spy = vi
+      .spyOn(console, 'error')
+      .mockImplementation((line) => void lines.push(String(line)));
+    const deps = await testDeps();
+    const res = await request(await testApp({}, { deps }))
+      .post('/api/events')
+      .send(
+        batch([
+          { type: 'api_error', data: { call: 'states', status: 0, code: 'network' }, at: now() },
+          { type: 'api_error', data: { call: 'interpret', status: 0, code: 'timeout' }, at: now() },
+          { type: 'step_viewed', data: { step: 'welcome' }, at: now() },
+        ]),
+      );
+    spy.mockRestore();
+    expect(res.status).toBe(204);
+    expect(await deps.store.listEvents()).toHaveLength(3);
+    const logged = lines.filter((line) => line.includes('client_api_errors'));
+    expect(logged).toHaveLength(1);
+    expect(JSON.parse(logged[0]!)).toMatchObject({
+      level: 'warn',
+      site: 'divorceamicably',
+      count: 2,
+      first: 'states:0:network interpret:0:timeout',
+    });
+
+    // Only the known calls and codes, nothing else.
+    const app = await testApp();
+    for (const data of [
+      { call: 'admin', status: 0, code: 'network' },
+      { call: 'states', status: 600, code: 'network' },
+      { call: 'states', status: 0, code: 'jane@example.com' },
+      { call: 'states', status: 0, code: 'network', url: '/api/states' },
+    ]) {
+      const bad = await request(app)
+        .post('/api/events')
+        .send(batch([{ type: 'api_error', data, at: now() }]));
+      expect(bad.status, JSON.stringify(data)).toBe(400);
+    }
   });
 
   it('rejects a whole batch if any event is bad, and stores nothing', async () => {

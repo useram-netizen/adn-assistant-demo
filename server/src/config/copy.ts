@@ -36,6 +36,9 @@ export const copy = {
     retry: 'Try again',
     /** Any request that fails (the visitor can retry; never a dead end). */
     requestError: 'Sorry, something went wrong on our side. Please try again.',
+    /** A request that got no answer at all: the visitor's connection, not the server. */
+    connectionError:
+      "I couldn't connect just now. Please check your internet connection and try again.",
     rateLimited: 'You’re going a little fast for me. Please wait a moment and try again.',
   },
 
@@ -70,6 +73,10 @@ export const copy = {
     no: 'No',
     /** After "No" to "Did you mean…?". */
     pickInstead: 'No problem. You can pick one of these:',
+    /** Typed text that doesn't answer the question but says what they need: kept for later. */
+    notedCategory: "Got it, I'll look for {categoryPlural}.",
+    /** The same for a place or a state. */
+    notedPlace: "Thanks, I'll keep that in mind.",
   },
 
   /** Shown once per session when the visitor may be in danger (spec: Safety). */
@@ -93,6 +100,8 @@ export const copy = {
         "Hi! I'm the Amicable Divorce Network assistant. I can help you find vetted divorce professionals near you. Are you…",
       optionDivorce: "I'm going through a divorce or considering one",
       optionProfessional: "I'm a divorce professional",
+      /** When a visitor types what they need (and the AI said nothing else). */
+      ackCategory: 'I can help you find {categoryWithArticle}.',
     },
     proInfo: {
       message:
@@ -109,6 +118,8 @@ export const copy = {
       noResults: 'No matching state',
       optionUk: "I'm in the UK",
       optionOutside: 'Somewhere else',
+      /** When the visitor already named a place in their state ("a mediator in Boston"). */
+      confirmHint: 'Are you in {state}?',
       /** "Did you mean {label}?" for the two buttons, when the visitor typed instead. */
       confirmUk: 'the UK',
       confirmOutside: 'somewhere outside the US and UK',
@@ -160,6 +171,8 @@ export const copy = {
     },
     category: {
       message: 'What kind of professional are you looking for?',
+      /** When the visitor already said what they need. */
+      confirmHint: 'You mentioned {categoryWithArticle}. Shall I look for {categoryPlural}?',
       more: 'More options',
       notSure: "I'm not sure",
       suggested: 'Suggested',

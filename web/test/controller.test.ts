@@ -396,20 +396,35 @@ describe('typed text', () => {
     expect(h.state().step).toBe('category');
   });
 
-  it('says it did not catch it, and shows the buttons again, when the text is unclear or the AI is down', async () => {
+  it('says it did not catch it, and shows the buttons again, when the text is unclear', async () => {
     const h = harness();
     await advanceTo(h, 'category');
     h.controller.say('blah');
     await h.settle();
     expect(h.texts().at(-1)).toBe(copy.fallback.didNotCatch);
     expect(h.state().step).toBe('category');
+  });
 
-    const down = harness({ interpret: vi.fn(() => failure(0, 'network')) });
-    await advanceTo(down, 'category');
-    down.controller.say('blah');
-    await down.settle();
-    expect(down.texts().at(-1)).toBe(copy.fallback.didNotCatch);
-    expect(down.state().step).toBe('category');
+  it('says plainly when the connection dropped (not "I didn’t catch that"), and keeps the question', async () => {
+    for (const [code, expected] of [
+      ['network', copy.widget.connectionError],
+      ['timeout', copy.widget.connectionError],
+      ['offline', copy.widget.connectionError],
+    ] as const) {
+      const down = harness({ interpret: vi.fn(() => failure(0, code)) });
+      await advanceTo(down, 'category');
+      down.controller.say('I need a mediator');
+      await down.settle();
+      expect(down.texts().at(-1), code).toBe(expected);
+      expect(down.texts(), code).not.toContain(copy.fallback.didNotCatch);
+      expect(down.state().step, code).toBe('category');
+    }
+    // The server answered with an error: our fault, not the visitor's connection.
+    const broken = harness({ interpret: vi.fn(() => failure(500, 'server_error')) });
+    await advanceTo(broken, 'category');
+    broken.controller.say('I need a mediator');
+    await broken.settle();
+    expect(broken.texts().at(-1)).toBe(copy.widget.requestError);
   });
 
   it('shows the safety card once, then carries on with the conversation', async () => {
@@ -567,6 +582,284 @@ describe('a typed county name', () => {
     h.controller.say('Georgia');
     await h.settle();
     expect(h.state().step).toBe('county');
+  });
+});
+
+describe('what the visitor says ahead of the questions (Stephen’s test, 2026-10-20)', () => {
+  const boston = {
+    countyFips: '25025',
+    countyName: 'Suffolk County',
+    confidence: 'high' as const,
+    reply: '',
+    safety: false,
+    source: 'ai' as const,
+  };
+  const states = () =>
+    Promise.resolve([
+      { code: 'GA', name: 'Georgia' },
+      { code: 'MA', name: 'Massachusetts' },
+    ]);
+  const counties = (state: string) =>
+    Promise.resolve(
+      state === 'MA'
+        ? [
+            { fips: '25017', name: 'Middlesex County' },
+            { fips: '25025', name: 'Suffolk County' },
+          ]
+        : [{ fips: '13121', name: 'Fulton County' }],
+    );
+
+  it('"I’m looking for a mediator in the boston area": Massachusetts, Suffolk County and mediators, each confirmed once', async () => {
+    const h = harness({
+      states,
+      counties,
+      interpret: vi.fn(() =>
+        Promise.resolve(
+          option('divorce', {
+            reply: 'I can help you find a mediator near Boston.',
+            hints: { category: 'mediator', state: 'MA', place: 'Boston' },
+          }),
+        ),
+      ),
+      county: vi.fn(() => Promise.resolve(boston)),
+    });
+    h.controller.start();
+    await h.settle();
+    h.controller.say("I'm looking for a mediator in the boston area");
+    await h.settle();
+    expect(h.texts().slice(-2)).toEqual([
+      'I can help you find a mediator near Boston.',
+      'Are you in Massachusetts?',
+    ]);
+    expect(h.state().step).toBe('location');
+    expect(h.state().confirm).toEqual({ step: 'location', optionId: 'MA', label: 'Massachusetts' });
+
+    h.controller.confirmAnswer(true);
+    await h.settle();
+    // The city they named finds the county: no county question.
+    expect(h.api.county).toHaveBeenCalledWith(
+      expect.objectContaining({ state: 'MA', text: 'Boston' }),
+    );
+    expect(h.state().step).toBe('county_confirm');
+    expect(h.texts().at(-1)).toBe('That sounds like Suffolk County. Is that right?');
+
+    h.controller.choose('yes');
+    await h.settle();
+    expect(h.state().answers).toMatchObject({ state: 'MA', countyFips: '25025' });
+    expect(h.state().step).toBe('stage');
+    h.controller.choose('ready');
+    await h.settle();
+    h.controller.choose('skip');
+    await h.settle();
+
+    expect(h.texts().at(-1)).toBe('You mentioned a mediator. Shall I look for mediators?');
+    expect(h.state().confirm).toEqual({
+      step: 'category',
+      optionId: 'mediator',
+      label: 'Mediator',
+    });
+    h.controller.confirmAnswer(true);
+    await h.settle();
+    expect(h.state().step).toBe('results');
+    expect(h.api.match).toHaveBeenCalledWith(
+      expect.objectContaining({ state: 'MA', countyFips: '25025', category: 'mediator' }),
+    );
+    // Each was asked once.
+    expect(h.texts().filter((text) => text === 'Are you in Massachusetts?')).toHaveLength(1);
+    expect(h.state().remembered).toEqual({
+      category: null,
+      state: null,
+      place: null,
+      placeState: null,
+    });
+  });
+
+  it('"No" to "Are you in Massachusetts?" shows the states, and Boston is not looked up elsewhere', async () => {
+    const h = harness({
+      states,
+      counties,
+      interpret: vi.fn(() =>
+        Promise.resolve(
+          option('divorce', { hints: { category: null, state: 'MA', place: 'Boston' } }),
+        ),
+      ),
+      county: vi.fn(() => Promise.resolve(boston)),
+    });
+    h.controller.start();
+    await h.settle();
+    h.controller.say("I'm near Boston");
+    await h.settle();
+    h.controller.confirmAnswer(false);
+    await h.settle();
+    expect(h.texts().at(-1)).toBe(copy.fallback.pickInstead);
+    expect(h.state().confirm).toBeNull();
+    h.controller.choose('GA');
+    await h.settle();
+    expect(h.api.county).not.toHaveBeenCalled();
+    expect(h.state().step).toBe('county');
+  });
+
+  it('a place that can’t be found, or no answer, just asks for the county', async () => {
+    for (const county of [
+      vi.fn(() => Promise.resolve({ ...boston, countyFips: null, countyName: null })),
+      vi.fn(() => failure(0, 'network')),
+    ]) {
+      const h = harness({
+        states,
+        counties,
+        interpret: vi.fn(() =>
+          Promise.resolve(
+            option('divorce', { hints: { category: null, state: 'MA', place: 'Boston' } }),
+          ),
+        ),
+        county,
+      });
+      h.controller.start();
+      await h.settle();
+      h.controller.say("I'm near Boston");
+      await h.settle();
+      h.controller.confirmAnswer(true);
+      await h.settle();
+      expect(h.state().step).toBe('county');
+      expect(h.texts().at(-1)).toBe('Which county in Massachusetts do you live in?');
+    }
+  });
+
+  it('"I need a divorce attorney" at the state question: noted, and the question asked again', async () => {
+    const h = harness({
+      interpret: vi.fn(() =>
+        Promise.resolve({
+          ...unclear,
+          source: 'ai' as const,
+          hints: { category: 'attorney' as const, state: null, place: null },
+        }),
+      ),
+    });
+    await advanceTo(h, 'location');
+    h.controller.say('I need a divorce attorney');
+    await h.settle();
+    expect(h.texts().slice(-2)).toEqual([
+      "Got it, I'll look for divorce attorneys.",
+      copy.steps.location.message,
+    ]);
+    expect(h.texts()).not.toContain(copy.fallback.didNotCatch);
+    expect(h.state().step).toBe('location');
+    expect(h.state().remembered.category).toBe('attorney');
+  });
+
+  it('acknowledges a request at the first question when the AI had nothing to add', async () => {
+    const h = harness({
+      interpret: vi.fn(() =>
+        Promise.resolve(
+          option('divorce', {
+            source: 'keyword',
+            hints: { category: 'attorney', state: null, place: null },
+          }),
+        ),
+      ),
+    });
+    h.controller.start();
+    await h.settle();
+    h.controller.say('I need a divorce attorney');
+    await h.settle();
+    expect(h.texts().slice(-2)).toEqual([
+      'I can help you find a divorce attorney.',
+      copy.steps.location.message,
+    ]);
+  });
+
+  it('"No" to "Shall I look for mediators?" shows every kind; Back asks the question again', async () => {
+    const h = harness({
+      interpret: vi.fn(() =>
+        Promise.resolve(
+          option('divorce', { hints: { category: 'mediator', state: null, place: null } }),
+        ),
+      ),
+    });
+    h.controller.start();
+    await h.settle();
+    h.controller.say('I need a mediator');
+    await h.settle();
+    for (const id of ['GA', '13121', 'ready', 'skip']) {
+      h.controller.choose(id);
+      await h.settle();
+    }
+    expect(h.state().confirm?.optionId).toBe('mediator');
+    h.controller.confirmAnswer(false);
+    await h.settle();
+    expect(h.state().confirm).toBeNull();
+    expect(stepOptions('category', h.state()).map((o) => o.id)).toContain('attorney');
+    h.controller.choose('attorney');
+    await h.settle();
+    expect(h.state().step).toBe('results');
+    h.controller.back();
+    expect(h.state().step).toBe('category');
+    expect(h.state().confirm).toEqual({
+      step: 'category',
+      optionId: 'mediator',
+      label: 'Mediator',
+    });
+  });
+
+  it('ignores what was already answered, and forgets it all on Start over', async () => {
+    const h = harness({
+      interpret: vi.fn(() =>
+        Promise.resolve({
+          ...unclear,
+          hints: { category: 'mediator' as const, state: 'MA', place: 'Boston' },
+        }),
+      ),
+    });
+    await advanceTo(h, 'stage');
+    h.controller.say('a mediator in Boston');
+    await h.settle();
+    // State and county are answered: only the kind of professional is kept.
+    expect(h.state().remembered).toMatchObject({ category: 'mediator', state: null, place: null });
+    h.controller.restart();
+    await h.settle();
+    expect(h.state().remembered.category).toBeNull();
+  });
+});
+
+describe('the ends of the professional and UK paths', () => {
+  it('offer Start over (and the join or UK link)', async () => {
+    const h = harness();
+    h.controller.start();
+    await h.settle();
+    h.controller.choose('professional');
+    await h.settle();
+    expect(h.state().step).toBe('pro_info');
+    expect(stepOptions('pro_info', h.state())).toEqual([{ id: 'restart', label: 'Start over' }]);
+    h.controller.choose('restart');
+    await h.settle();
+    expect(h.state().step).toBe('welcome');
+
+    h.controller.choose('divorce');
+    await h.settle();
+    h.controller.choose('uk');
+    await h.settle();
+    expect(stepOptions('uk', h.state()).map((o) => o.id)).toEqual(['restart']);
+  });
+});
+
+describe('when the connection drops', () => {
+  it('says so when the next question can’t load, and Try again works once it is back', async () => {
+    let online = false;
+    const h = harness({
+      states: vi.fn(() =>
+        online ? Promise.resolve([{ code: 'GA', name: 'Georgia' }]) : failure(0, 'network'),
+      ),
+    });
+    h.controller.start();
+    await h.settle();
+    h.controller.choose('divorce');
+    await h.settle();
+    expect(h.texts().at(-1)).toBe(copy.widget.connectionError);
+    expect(h.state().retry).not.toBeNull();
+    online = true;
+    h.controller.retryLast();
+    await h.settle();
+    expect(h.state().step).toBe('location');
   });
 });
 
