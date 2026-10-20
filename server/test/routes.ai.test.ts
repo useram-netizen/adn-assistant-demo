@@ -177,7 +177,20 @@ describe('POST /api/ai/interpret', () => {
     });
     const data = ai.calls[0]?.input.data as { where?: string | null } | undefined;
     expect(data?.where).toContain('divorce professional');
-    expect(data?.where).toContain(copy.steps.proInfo.joinButton);
+    // No JOIN_URL in the tests: the AI is not told about a button that isn't there.
+    expect(data?.where).not.toContain(copy.steps.proInfo.joinButton);
+    expect(data?.where).toContain('Tracy');
+
+    const withLink = fakeAi(() => ok(interpretOut({ kind: 'question', reply: 'Use the button.' })));
+    await post(
+      'interpret',
+      body({ step: 'other', text: 'how do I join?', at: 'pro_info' }),
+      withLink,
+      { JOIN_URL: 'https://example.com/join' },
+    );
+    expect((withLink.calls[0]?.input.data as { where?: string }).where).toContain(
+      copy.steps.proInfo.joinButton,
+    );
 
     // At a step with a question there is nothing to add; an unknown step is ignored.
     const plain = fakeAi(() => ok(interpretOut({ kind: 'unclear' })));

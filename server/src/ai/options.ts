@@ -210,12 +210,18 @@ export function exactOption(text: string, options: readonly StepOption[]): strin
  * For the AI: what the visitor is looking at on the widget's steps that ask no question of their
  * own, so "What can you do for me?" at the end of the professional path gets a fitting reply.
  */
-export function whereFor(at: StepId | undefined): string | null {
+export function whereFor(
+  at: StepId | undefined,
+  { joinLink }: { joinLink: boolean } = { joinLink: true },
+): string | null {
   const steps = copy.steps;
   const startOver = steps.whatsNext.startOver;
   switch (at) {
     case 'pro_info':
-      return `The visitor said they are a divorce professional. The assistant welcomed them; the buttons are "${steps.proInfo.joinButton}" (the network's page about membership and joining) and "${startOver}". A professional looking for help with their own divorce can choose "${startOver}".`;
+      // Only a button that is really there (JOIN_URL may not be set yet).
+      return joinLink
+        ? `The visitor said they are a divorce professional. The assistant welcomed them; the buttons are "${steps.proInfo.joinButton}" (the network's page about membership and joining) and "${startOver}". A professional looking for help with their own divorce can choose "${startOver}".`
+        : `The visitor said they are a divorce professional. The assistant welcomed them and thanked them for their interest in joining; there is no button about joining, so for membership and joining, Tracy, the network's founder, can tell them. The only button is "${startOver}", for a professional looking for help with their own divorce.`;
     case 'uk':
       return `The visitor is in the UK. The assistant pointed them to the network's UK site (the "${steps.uk.button}" button); there is also "${startOver}".`;
     case 'outside':

@@ -151,7 +151,7 @@ export function aiRouter({ config, geo, events, client, rateLimitEnabled }: AiRo
     }
 
     const result = await ask(req, { sessionId, site, kind: 'interpret' }, (ai) =>
-      interpret(ai, { spec, text, where: whereFor(at) }),
+      interpret(ai, { spec, text, where: whereFor(at, { joinLink: Boolean(config.links.join) }) }),
     );
     if (result) {
       const body: InterpretResponse = {
