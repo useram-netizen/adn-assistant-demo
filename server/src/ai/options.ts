@@ -8,7 +8,7 @@ import {
   type CategoryKey,
 } from '../config/taxonomy.js';
 import type { County, Geo } from '../domain/types.js';
-import type { InterpretStep } from '../shared/api.js';
+import type { InterpretStep, StepId } from '../shared/api.js';
 import { matchKey } from './text.js';
 
 /**
@@ -204,4 +204,31 @@ export function exactOption(text: string, options: readonly StepOption[]): strin
     found = candidate.id;
   }
   return found;
+}
+
+/**
+ * For the AI: what the visitor is looking at on the widget's steps that ask no question of their
+ * own, so "What can you do for me?" at the end of the professional path gets a fitting reply.
+ */
+export function whereFor(at: StepId | undefined): string | null {
+  const steps = copy.steps;
+  const startOver = steps.whatsNext.startOver;
+  switch (at) {
+    case 'pro_info':
+      return `The visitor said they are a divorce professional. The assistant welcomed them; the buttons are "${steps.proInfo.joinButton}" (the network's page about membership and joining) and "${startOver}". A professional looking for help with their own divorce can choose "${startOver}".`;
+    case 'uk':
+      return `The visitor is in the UK. The assistant pointed them to the network's UK site (the "${steps.uk.button}" button); there is also "${startOver}".`;
+    case 'outside':
+      return `The visitor is outside the US and UK. The assistant offered "${steps.outside.emailTracy}": Tracy, the network's founder, may still be able to help.`;
+    case 'results':
+      return 'The assistant is showing the visitor the matching professionals as cards. They can select up to five and press "Contact selected" to send them one request; the professionals reply to them directly.';
+    case 'no_match':
+      return `Nobody in the network covers the visitor's county for that kind of professional. The buttons are "${steps.noMatch.emailTracy}" (Tracy, the founder, helps personally), "${steps.noMatch.tryAnother}" and "${steps.noMatch.startOver}".`;
+    case 'done':
+      return `The visitor's request was sent: the professionals (or Tracy) will reply to them directly. The buttons offer other kinds of professionals and "${startOver}".`;
+    case 'county_confirm':
+      return 'The assistant suggested which county the visitor lives in and asked whether that is right (buttons "Yes" and "No, let me pick").';
+    default:
+      return null;
+  }
 }

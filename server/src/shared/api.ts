@@ -134,6 +134,8 @@ export interface InterpretRequest {
   state?: string;
   /** Required for step "subcategory". */
   category?: CategoryKey;
+  /** The widget's step, so a reply fits what the visitor is looking at (for steps the server has no options for). */
+  at?: StepId;
 }
 
 /**

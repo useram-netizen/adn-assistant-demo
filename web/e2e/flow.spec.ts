@@ -315,6 +315,24 @@ test.describe('Stephen’s tests (2026-10-20)', () => {
     await expect(chat.widget.locator('.adn-card').first()).toBeVisible();
   });
 
+  test('"Ok what can you do for me" on the professional path gets a reply, not "I didn’t catch that"', async ({
+    page,
+  }) => {
+    const chat = await open(page);
+    await chat.button(welcome.optionProfessional).click();
+    await expect(chat.lastBot()).toContainText(copy.steps.proInfo.message);
+    await chat.type('Ok what can you do for me');
+    await expect(chat.lastBot()).toContainText(
+      'I can tell you about joining the network: use the button to learn more.',
+    );
+    await expect(chat.widget.getByText(copy.fallback.didNotCatch)).toHaveCount(0);
+    await expect(chat.widget.getByText(copy.fallback.didNotCatchNoOptions)).toHaveCount(0);
+    // The buttons are still there.
+    await expect(
+      chat.widget.getByRole('link', { name: new RegExp(copy.steps.proInfo.joinButton) }),
+    ).toBeVisible();
+  });
+
   test('"I need a divorce attorney" at the state question is noted, not "I didn’t catch that"', async ({
     page,
   }) => {

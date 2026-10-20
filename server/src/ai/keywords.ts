@@ -148,6 +148,21 @@ export function placeFromText(
   return { state: state?.code ?? null, place: zip };
 }
 
+const HELLO =
+  /^\s*(?:hi|hello|hey|hiya|howdy|good (?:morning|afternoon|evening))\b[\s!.,]*(?:there|again)?[\s!.,]*$/;
+const THANKS = /\b(?:thanks|thank you|thx|cheers)\b/;
+const ABOUT =
+  /\bwhat (?:can|do|could) you do\b|\bhow (?:does|do) (?:this|it|you) work\b|\bwhat is this\b|\bwhat(?:'s| is) this (?:for|about)\b|\bwho are you\b|\bwhat are you\b|\bhow can you help\b|\bwhat do you offer\b/;
+
+/** An everyday message with a ready reply: a greeting, thanks, or "what can you do?". */
+export function everydayMessage(text: string): 'hello' | 'thanks' | 'about' | null {
+  const lower = text.toLowerCase().replace(/[’]/g, "'");
+  if (ABOUT.test(lower)) return 'about';
+  if (HELLO.test(lower)) return 'hello';
+  if (THANKS.test(lower) && lower.length < 40) return 'thanks';
+  return null;
+}
+
 /** What the text says, without the AI: an option of the step (or null) and the hints. */
 export function keywordInterpret(
   spec: StepSpec,

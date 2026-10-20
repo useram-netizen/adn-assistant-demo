@@ -1,1 +1,1 @@
-console.log("widget fixture");
+console.log('widget fixture');

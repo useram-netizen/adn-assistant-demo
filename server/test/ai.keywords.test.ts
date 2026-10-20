@@ -1,5 +1,10 @@
 import { describe, expect, it } from 'vitest';
-import { categoryFromText, placeFromText, welcomeFromText } from '../src/ai/keywords.js';
+import {
+  categoryFromText,
+  everydayMessage,
+  placeFromText,
+  welcomeFromText,
+} from '../src/ai/keywords.js';
 import { createGeo } from '../src/geo/index.js';
 import { testConfig } from './helpers.js';
 
@@ -37,6 +42,21 @@ describe('keywords (when the AI is not available)', () => {
     ['hi', null],
   ])('at the first question, "%s" means %s', (text, expected) => {
     expect(welcomeFromText(text)).toBe(expected);
+  });
+
+  it.each([
+    ['hi', 'hello'],
+    ['Hello!', 'hello'],
+    ['good morning', 'hello'],
+    ['thank you', 'thanks'],
+    ['Ok what can you do for me', 'about'],
+    ['what’s this for?', 'about'],
+    ['who are you', 'about'],
+    ['hi, I need a lawyer in Atlanta', null],
+    ['thanks, but I really need help with custody and the house and everything', null],
+    ['I need a mediator', null],
+  ])('"%s" is the everyday message %s', (text, expected) => {
+    expect(everydayMessage(text)).toBe(expected);
   });
 
   it.each([

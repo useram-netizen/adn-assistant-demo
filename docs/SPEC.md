@@ -32,6 +32,7 @@ The owner changed these decisions; the sections below are updated to match.
   - Without the AI, keywords still understand the common requests (`ai/keywords.ts`).
   - The widget tries requests that change nothing again after a dropped connection, says plainly when it can't connect, and reports failed requests as `api_error` events (logged as `client_api_errors`).
   - The professional and UK ends also offer Start over, so neither is a dead end.
+  - Everyday messages get a short reply at any step instead of "Sorry, I didn't catch that": greetings, thanks, "What can you do for me?", "How does this work?", off-topic text and requests to recommend someone. The AI uses only the facts about the assistant given in its task (no prices or policies), and the widget sends the step it is on (`at`), so a reply fits what the visitor sees (for example the end of the professional path). Without the AI, greetings, thanks and "what can you do?" get ready replies from `copy.fallback`.
 
 ## Files I've given you
 - data/members.csv: the client's member list, exported from their Google Sheet. Treat it as input only and never edit it. Later updates may arrive as .csv or .xlsx, so the import must accept both. It is committed to the private repo, and the server loads it at startup (`MEMBERS_FILE`).

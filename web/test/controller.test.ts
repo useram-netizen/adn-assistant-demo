@@ -342,7 +342,61 @@ describe('typed text', () => {
       step: 'county',
       text: 'Cobb',
       state: 'GA',
+      at: 'county',
     });
+  });
+
+  it('answers everyday messages anywhere: a reply, then the question again where there is one', async () => {
+    const reply = (text: string) =>
+      vi.fn(() =>
+        Promise.resolve({
+          ...unclear,
+          kind: 'question' as const,
+          reply: text,
+          source: 'ai' as const,
+        }),
+      );
+    // At the end of the professional path: the reply, and the buttons stay (no repeated welcome).
+    const pro = harness({ interpret: reply('I can tell you about joining the network.') });
+    pro.controller.start();
+    await pro.settle();
+    pro.controller.choose('professional');
+    await pro.settle();
+    const before = pro.texts().length;
+    pro.controller.say('Ok what can you do for me');
+    await pro.settle();
+    expect(pro.texts().slice(before)).toEqual([
+      'Ok what can you do for me',
+      'I can tell you about joining the network.',
+    ]);
+    expect(pro.api.interpret).toHaveBeenCalledWith(
+      expect.objectContaining({ step: 'other', at: 'pro_info' }),
+    );
+    expect(pro.state().step).toBe('pro_info');
+    expect(pro.texts()).not.toContain(copy.fallback.didNotCatch);
+
+    // At a question: the reply, then the question again.
+    const hello = harness({ interpret: reply('Hi! I can help you find divorce professionals.') });
+    hello.controller.start();
+    await hello.settle();
+    hello.controller.say('hi');
+    await hello.settle();
+    expect(hello.texts().slice(-2)).toEqual([
+      'Hi! I can help you find divorce professionals.',
+      copy.steps.welcome.askAgain,
+    ]);
+  });
+
+  it('says it did not catch it, with the buttons, only when there is no reply at all', async () => {
+    const h = harness();
+    h.controller.start();
+    await h.settle();
+    h.controller.choose('professional');
+    await h.settle();
+    h.controller.say('xqzzv');
+    await h.settle();
+    // The professional path now has a button (Start over), so "pick one of these".
+    expect(h.texts().at(-1)).toBe(copy.fallback.didNotCatch);
   });
 
   it('accepts an exact match straight away, without asking', async () => {

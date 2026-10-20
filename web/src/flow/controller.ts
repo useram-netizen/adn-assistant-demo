@@ -94,6 +94,23 @@ const INTERPRET_STEPS: Partial<Record<StepId, InterpretStep>> = {
   subcategory: 'subcategory',
 };
 
+/**
+ * Steps that ask a question, asked again after a reply to something else. The other steps (the
+ * end of the professional path, the results, the last screen…) keep their buttons and say nothing
+ * more: repeating their whole message after "What can you do for me?" would read oddly.
+ */
+const ASK_AGAIN = new Set<StepId>([
+  'welcome',
+  'location',
+  'county',
+  'county_confirm',
+  'stage',
+  'category',
+  'category_more',
+  'category_help',
+  'subcategory',
+]);
+
 /** Typed answers accepted straight away (spec: at welcome and stage). */
 const ACCEPT_DIRECTLY = new Set<StepId>(['welcome', 'stage']);
 /** Options that are never asked about with "Did you mean…?". */
@@ -453,7 +470,11 @@ export class ChatController {
               label: this.confirmLabel(step, pending.optionId, pending.label),
             }),
         ]
-      : this.questionFor(step);
+      : step === 'welcome'
+        ? [copy.steps.welcome.askAgain]
+        : ASK_AGAIN.has(step)
+          ? this.questionFor(step)
+          : [];
     const askAgain = () => {
       if (pending) this.set({ confirm: pending });
     };
@@ -466,6 +487,8 @@ export class ChatController {
         text,
         ...(apiStep === 'county' && answers.state ? { state: answers.state } : {}),
         ...(apiStep === 'subcategory' && answers.category ? { category: answers.category } : {}),
+        // Where the visitor is, so a reply fits (the end of the professional path, the results…).
+        at: step,
       });
     } catch (error) {
       if (epoch !== this.epoch) return;
@@ -545,12 +568,11 @@ export class ChatController {
     }
 
     // After the safety card, "I didn't catch that" would be the wrong thing to say.
-    const hasInput = step !== 'pro_info' && step !== 'uk';
     const unclear = result.safety
       ? copy.safety.continue
-      : hasInput
-        ? copy.fallback.didNotCatch
-        : copy.fallback.didNotCatchNoOptions;
+      : step === 'results'
+        ? copy.fallback.didNotCatchNoOptions
+        : copy.fallback.didNotCatch;
     if (!(await this.botSays([unclear], epoch))) return;
     await this.refreshAnalysisAfterSharing(step, epoch);
   }

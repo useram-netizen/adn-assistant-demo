@@ -162,6 +162,53 @@ describe('POST /api/ai/interpret', () => {
     });
   });
 
+  it('tells the AI what the visitor is looking at when there is no question (the end of the professional path)', async () => {
+    const ai = fakeAi(() =>
+      ok(interpretOut({ kind: 'question', reply: 'I can tell you about joining the network.' })),
+    );
+    const { res } = await post(
+      'interpret',
+      body({ step: 'other', text: 'Ok what can you do for me', at: 'pro_info' }),
+      ai,
+    );
+    expect(res.body).toMatchObject({
+      kind: 'question',
+      reply: 'I can tell you about joining the network.',
+    });
+    const data = ai.calls[0]?.input.data as { where?: string | null } | undefined;
+    expect(data?.where).toContain('divorce professional');
+    expect(data?.where).toContain(copy.steps.proInfo.joinButton);
+
+    // At a step with a question there is nothing to add; an unknown step is ignored.
+    const plain = fakeAi(() => ok(interpretOut({ kind: 'unclear' })));
+    await post('interpret', body({ step: 'welcome', text: 'hello', at: 'welcome' }), plain);
+    expect((plain.calls[0]?.input.data as { where?: unknown }).where).toBeNull();
+    const odd = await post(
+      'interpret',
+      body({ step: 'other', text: 'hello', at: 'nowhere' }),
+      plain,
+    );
+    expect(odd.res.status).toBe(200);
+  });
+
+  it('answers greetings, thanks and "what can you do?" even when the AI is off', async () => {
+    const cases: Array<[string, string, string]> = [
+      ['welcome', 'hi', copy.fallback.hello],
+      ['location', 'Hello there!', copy.fallback.hello],
+      ['other', 'thanks!', copy.fallback.thanks],
+      ['other', 'Ok what can you do for me', copy.fallback.about],
+      ['category', 'how does this work?', copy.fallback.about],
+    ];
+    for (const [step, text, reply] of cases) {
+      const { res } = await post(
+        'interpret',
+        body({ step, text }),
+        fakeAi(() => failed()),
+      );
+      expect(res.body, text).toMatchObject({ kind: 'question', reply, source: 'keyword' });
+    }
+  });
+
   it('never takes a request with no place as the UK or "somewhere else" at the state question', async () => {
     const outside = (place: string | null) =>
       fakeAi(() =>

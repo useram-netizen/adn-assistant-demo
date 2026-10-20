@@ -1,6 +1,6 @@
 import { Router } from 'express';
 import { z } from 'zod';
-import { createStepSpecs, exactOption, INTERPRET_STEPS } from '../ai/options.js';
+import { createStepSpecs, exactOption, INTERPRET_STEPS, whereFor } from '../ai/options.js';
 import {
   NO_HINTS,
   countyFromPlace,
@@ -10,7 +10,7 @@ import {
   type AiOutcome,
   type InterpretHints,
 } from '../ai/calls.js';
-import { keywordInterpret } from '../ai/keywords.js';
+import { everydayMessage, keywordInterpret } from '../ai/keywords.js';
 import type { AiCallKind, AiClient } from '../ai/client.js';
 import { SessionBudget } from '../ai/limits.js';
 import { copy } from '../config/copy.js';
@@ -21,6 +21,7 @@ import type { EventSink, Geo } from '../domain/types.js';
 import { log } from '../lib/log.js';
 import { matchesSafetyKeywords } from '../safety/keywords.js';
 import { FixedWindowCounter, RATE_LIMITS, clientIp } from '../security/rateLimit.js';
+import { STEP_IDS } from '../shared/api.js';
 import type {
   CountyFromPlaceResponse,
   InterpretResponse,
@@ -106,6 +107,8 @@ export function aiRouter({ config, geo, events, client, rateLimitEnabled }: AiRo
       text: visitorTextSchema,
       state: stateSchema(geo).optional(),
       category: z.enum(CATEGORY_KEYS).optional(),
+      // Only context for the AI: anything unknown is ignored.
+      at: z.enum(STEP_IDS).optional().catch(undefined),
     })
     .superRefine((value, ctx) => {
       if (value.step === 'county' && !value.state) {
@@ -129,7 +132,7 @@ export function aiRouter({ config, geo, events, client, rateLimitEnabled }: AiRo
   router.post('/ai/interpret', async (req, res) => {
     const parsed = interpretBody.safeParse(req.body);
     if (!parsed.success) return sendValidationError(res, parsed.error);
-    const { sessionId, site, step, text, state, category } = parsed.data;
+    const { sessionId, site, step, text, state, category, at } = parsed.data;
     const safety = matchesSafetyKeywords(text);
     const spec = specs(step, { state, category });
 
@@ -148,7 +151,7 @@ export function aiRouter({ config, geo, events, client, rateLimitEnabled }: AiRo
     }
 
     const result = await ask(req, { sessionId, site, kind: 'interpret' }, (ai) =>
-      interpret(ai, { spec, text }),
+      interpret(ai, { spec, text, where: whereFor(at) }),
     );
     if (result) {
       const body: InterpretResponse = {
@@ -163,16 +166,18 @@ export function aiRouter({ config, geo, events, client, rateLimitEnabled }: AiRo
       return void res.json(body);
     }
 
-    // No AI: keywords still understand the common requests ("I need a divorce attorney").
+    // No AI: keywords still understand the common requests ("I need a divorce attorney"), and
+    // greetings, thanks and "what can you do?" get a ready reply.
     const understood = keywordInterpret(spec, text, geo);
+    const everyday = understood.optionId ? null : everydayMessage(text);
     const body: InterpretResponse = {
-      kind: understood.optionId ? 'option' : 'unclear',
+      kind: understood.optionId ? 'option' : everyday ? 'question' : 'unclear',
       optionId: understood.optionId,
-      reply: '',
+      reply: everyday ? copy.fallback[everyday] : '',
       safety,
       sharesSituation: false,
       hints: understood.hints,
-      source: understood.optionId ? 'keyword' : 'fallback',
+      source: understood.optionId || everyday ? 'keyword' : 'fallback',
     };
     res.json(body);
   });

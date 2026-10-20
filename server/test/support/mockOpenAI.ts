@@ -12,6 +12,7 @@ import { fileURLToPath } from 'node:url';
 
 interface Data {
   step?: string;
+  where?: string | null;
   visitor_text?: string;
   options?: Array<{ id: string }>;
   counties?: Array<{ fips: string }>;
@@ -75,6 +76,13 @@ function interpret(data: Data) {
       reply: 'I’m sorry you’re going through this.',
       shares_situation: true,
     });
+  }
+  if (text.includes('what can you do')) {
+    return question(
+      data.where?.includes('divorce professional')
+        ? 'I can tell you about joining the network: use the button to learn more.'
+        : 'I can help you find vetted divorce professionals near you.',
+    );
   }
   if (text.includes('cdfa')) {
     return question(

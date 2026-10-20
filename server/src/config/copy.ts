@@ -77,6 +77,11 @@ export const copy = {
     notedCategory: "Got it, I'll look for {categoryPlural}.",
     /** The same for a place or a state. */
     notedPlace: "Thanks, I'll keep that in mind.",
+    /** Replies to everyday messages when the AI is not available (it answers them itself otherwise). */
+    hello: 'Hi! I can help you find vetted divorce professionals near you.',
+    thanks: "You're welcome!",
+    about:
+      "I can help you find vetted divorce professionals near you. I'll ask a few quick questions, then show you matching members of the network, and you can contact the ones you choose.",
   },
 
   /** Shown once per session when the visitor may be in danger (spec: Safety). */
@@ -102,6 +107,8 @@ export const copy = {
       optionProfessional: "I'm a divorce professional",
       /** When a visitor types what they need (and the AI said nothing else). */
       ackCategory: 'I can help you find {categoryWithArticle}.',
+      /** The question again, short, after a reply to something else ("hi", "what can you do?"). */
+      askAgain: 'Which of these describes you?',
     },
     proInfo: {
       message:
