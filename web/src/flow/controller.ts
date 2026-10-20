@@ -223,7 +223,8 @@ export class ChatController {
     this.add('visitor', text);
     if (step === 'county_help') void this.run((epoch) => this.countyHelp(text, epoch));
     else if (step === 'situation') void this.run((epoch) => this.situation(text, epoch));
-    else void this.run((epoch) => this.interpret(step, text, epoch));
+    // A Yes or No question that was waiting is asked again unless the text answers the step.
+    else void this.run((epoch) => this.interpret(step, text, epoch, confirm));
   }
 
   /** "See all kinds of professionals" on the category help step. */
@@ -436,9 +437,26 @@ export class ChatController {
 
   // ---------------------------------------------------------------- Typed text
 
-  private async interpret(step: StepId, text: string, epoch: number): Promise<void> {
+  private async interpret(
+    step: StepId,
+    text: string,
+    epoch: number,
+    pending: Confirm | null = null,
+  ): Promise<void> {
     const { answers } = this.state;
     const apiStep = INTERPRET_STEPS[step] ?? 'other';
+    // What to ask again after a reply: the waiting Yes or No question, or the step's question.
+    const again = pending
+      ? [
+          pending.question ??
+            fill(copy.fallback.didYouMean, {
+              label: this.confirmLabel(step, pending.optionId, pending.label),
+            }),
+        ]
+      : this.questionFor(step);
+    const askAgain = () => {
+      if (pending) this.set({ confirm: pending });
+    };
     let result: InterpretResponse;
     try {
       result = await this.deps.api.interpret({
@@ -453,7 +471,7 @@ export class ChatController {
       if (epoch !== this.epoch) return;
       // No answer (the connection) or a fault: say which, and keep the question so they can try
       // again or pick. "I didn't catch that" would blame the visitor's words.
-      await this.botSays([this.problemMessage(error)], epoch);
+      if (await this.botSays([this.problemMessage(error)], epoch)) askAgain();
       return;
     }
     if (epoch !== this.epoch) return;
@@ -485,12 +503,24 @@ export class ChatController {
           label: this.confirmLabel(step, result.optionId, label),
         });
         if (!(await this.botSays([ask], epoch))) return;
-        this.set({ confirm: { step, optionId: result.optionId, label } });
+        this.set({ confirm: { step, optionId: result.optionId, label, question: ask } });
         return;
       }
     } else if (result.kind === 'question' && result.reply) {
-      if (!(await this.botSays([result.reply, ...this.questionFor(step)], epoch))) return;
+      if (!(await this.botSays([result.reply, ...again], epoch))) return;
+      askAgain();
       await this.refreshAnalysisAfterSharing(step, epoch);
+      return;
+    }
+
+    // At the kind-of-professional question, what they need is the answer: "Did you mean…?"
+    const categorySteps: StepId[] = ['category', 'category_more', 'category_help'];
+    if (categorySteps.includes(step) && learned.category && !result.safety) {
+      const label = copy.categories[learned.category];
+      const ask = fill(copy.fallback.didYouMean, { label });
+      if (!(await this.botSays([ask], epoch))) return;
+      this.forget({ category: null });
+      this.set({ confirm: { step, optionId: learned.category, label, question: ask } });
       return;
     }
 
@@ -502,8 +532,15 @@ export class ChatController {
             categoryPlural: copy.categoriesPlural[learned.category],
           })
         : copy.fallback.notedPlace;
-      if (!(await this.botSays([noted, ...this.questionFor(step)], epoch))) return;
+      if (!(await this.botSays([noted, ...again], epoch))) return;
+      askAgain();
       await this.refreshAnalysisAfterSharing(step, epoch);
+      return;
+    }
+
+    // Something else while a Yes or No question was waiting: just ask it again.
+    if (pending && !result.safety) {
+      if (await this.botSays(again, epoch)) askAgain();
       return;
     }
 
@@ -1019,7 +1056,8 @@ export class ChatController {
     const place =
       !answers.countyFips && hints.place && hints.place.length <= 60 ? hints.place : null;
     const learned = {
-      category: category !== remembered.category ? category : null,
+      // Said again ("a list of mediators") still gets "Got it, I'll look for mediators."
+      category,
       state: state !== null && state !== remembered.state,
       place: place !== null && place !== remembered.place,
     };
@@ -1046,9 +1084,10 @@ export class ChatController {
     this.forget({ state: null });
     const known = this.state.lists.states.find((item) => item.code === code);
     if (!known) return null;
+    const question = fill(copy.steps.location.confirmHint, { state: known.name });
     return {
-      messages: [fill(copy.steps.location.confirmHint, { state: known.name })],
-      confirm: { step: 'location', optionId: known.code, label: known.name },
+      messages: [question],
+      confirm: { step: 'location', optionId: known.code, label: known.name, question },
     };
   }
 
@@ -1079,14 +1118,13 @@ export class ChatController {
     const category = this.state.remembered.category;
     if (!category) return null;
     this.forget({ category: null });
+    const question = fill(copy.steps.category.confirmHint, {
+      categoryWithArticle: copy.categoriesWithArticle[category],
+      categoryPlural: copy.categoriesPlural[category],
+    });
     return {
-      messages: [
-        fill(copy.steps.category.confirmHint, {
-          categoryWithArticle: copy.categoriesWithArticle[category],
-          categoryPlural: copy.categoriesPlural[category],
-        }),
-      ],
-      confirm: { step: 'category', optionId: category, label: copy.categories[category] },
+      messages: [question],
+      confirm: { step: 'category', optionId: category, label: copy.categories[category], question },
     };
   }
 

@@ -162,6 +162,35 @@ describe('POST /api/ai/interpret', () => {
     });
   });
 
+  it('never takes a request with no place as the UK or "somewhere else" at the state question', async () => {
+    const outside = (place: string | null) =>
+      fakeAi(() =>
+        ok(
+          interpretOut({
+            option_id: 'outside',
+            category: place ? null : 'attorney',
+            place,
+          }),
+        ),
+      );
+    const noPlace = await post(
+      'interpret',
+      body({ step: 'location', text: 'I need a divorce attorney' }),
+      outside(null),
+    );
+    expect(noPlace.res.body).toMatchObject({
+      kind: 'unclear',
+      optionId: null,
+      hints: { category: 'attorney' },
+    });
+    const canada = await post(
+      'interpret',
+      body({ step: 'location', text: 'I live in Canada' }),
+      outside('Canada'),
+    );
+    expect(canada.res.body).toMatchObject({ kind: 'option', optionId: 'outside' });
+  });
+
   it('still understands common requests from keywords when the AI is off or failing', async () => {
     const cases: Array<[string, string, Record<string, unknown>]> = [
       [

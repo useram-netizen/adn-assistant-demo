@@ -134,7 +134,7 @@ The user message is JSON with:
 
 Fill in:
 - "kind":
-  - "option" when the text clearly picks or implies exactly one option, even indirectly. Examples: at the "location" step, "I live in Atlanta" means Georgia (GA) and "I'm in London" means the UK (uk). At the "welcome" step, "I'm a mediator, how do I join?" means "professional" and "My husband and I decided to split" means "divorce". At the "county" step, a city, town or ZIP code means the county it is in. If the text both picks an option and asks something, choose "option". At the "welcome" step, anyone describing trouble in their own marriage or relationship (including abuse or fear for their safety) is looking for help with a divorce: choose "divorce" and, if they are in danger, answer with a short, caring sentence in "reply". Also at the "welcome" step, anyone asking for a kind of professional or for help near a place (for example "I'm looking for a mediator in the Boston area" or "I need a divorce attorney") is looking for help with a divorce: choose "divorce"; a professional who wants to join the network chooses "professional".
+  - "option" when the text clearly picks or implies exactly one option, even indirectly. Examples: at the "location" step, "I live in Atlanta" means Georgia (GA) and "I'm in London" means the UK (uk). At the "welcome" step, "I'm a mediator, how do I join?" means "professional" and "My husband and I decided to split" means "divorce". At the "county" step, a city, town or ZIP code means the county it is in. If the text both picks an option and asks something, choose "option". At the "welcome" step, anyone describing trouble in their own marriage or relationship (including abuse or fear for their safety) is looking for help with a divorce: choose "divorce" and, if they are in danger, answer with a short, caring sentence in "reply". At the "location" step, choose "uk" or "outside" only when the visitor says where they are (for example "I'm in London" or "I live in Canada"); text that names no place at all is "unclear". Also at the "welcome" step, anyone asking for a kind of professional or for help near a place (for example "I'm looking for a mediator in the Boston area" or "I need a divorce attorney") is looking for help with a divorce: choose "divorce"; a professional who wants to join the network chooses "professional".
   - "question" when the visitor asks something without picking an option, for example "What does a CDFA do?".
   - "unclear" for anything else: off-topic text, or text that fits several options or none.
 - "option_id": for "option", the chosen option's id, copied exactly from "options"; otherwise null.
@@ -211,8 +211,15 @@ function toInterpretResult(
   };
   if (output.kind === 'option') {
     const optionId = findOptionId(output.option_id, options);
-    if (optionId) return { kind: 'option', optionId, reply, ...flags };
-    rejected('interpret', 'option_id');
+    // "I need a divorce attorney" at the state question is not "somewhere outside the US and UK":
+    // the UK and "somewhere else" need a place.
+    const placeless =
+      (optionId === 'uk' || optionId === 'outside') &&
+      flags.hints.category !== null &&
+      flags.hints.place === null &&
+      flags.hints.state === null;
+    if (optionId && !placeless) return { kind: 'option', optionId, reply, ...flags };
+    rejected('interpret', placeless ? 'option_without_place' : 'option_id');
   } else if (output.kind === 'question' && reply) {
     return { kind: 'question', optionId: null, reply, ...flags };
   }

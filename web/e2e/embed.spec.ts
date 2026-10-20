@@ -86,10 +86,16 @@ test.describe('inline embed (the default)', () => {
       .poll(async () => (await measureInline(page)).height)
       .toBeGreaterThan(atWelcome.height);
 
+    // It grows as each part appears; once settled, nothing is cut off (unless it hit the cap).
     const viewport = page.viewportSize()!;
+    await expect
+      .poll(async () => {
+        const now = await measureInline(page);
+        return now.height >= viewport.height - 24 || now.overflow <= 1;
+      })
+      .toBe(true);
     const after = await measureInline(page);
     expect(after.height).toBeLessThanOrEqual(viewport.height);
-    if (after.height < viewport.height - 24) expect(after.overflow).toBeLessThanOrEqual(1);
   });
 
   test('keeps the newest message on screen while the visitor uses it', async ({ page }) => {

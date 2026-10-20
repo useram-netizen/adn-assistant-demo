@@ -1,4 +1,4 @@
-import type { LeadResponse } from '@adn/api';
+import type { InterpretResponse, LeadResponse } from '@adn/api';
 import { copy, fill } from '@adn/copy';
 import { describe, expect, it, vi } from 'vitest';
 import { stepOptions } from '../src/flow/options';
@@ -312,7 +312,7 @@ describe('typed text', () => {
     h.controller.say('I live in Atlanta');
     await h.settle();
     expect(h.texts().slice(-2)).toEqual(['I live in Atlanta', 'Did you mean Georgia?']);
-    expect(h.state().confirm).toEqual({ step: 'location', optionId: 'GA', label: 'Georgia' });
+    expect(h.state().confirm).toMatchObject({ step: 'location', optionId: 'GA', label: 'Georgia' });
     expect(h.state().step).toBe('location');
 
     h.controller.confirmAnswer(true);
@@ -560,7 +560,7 @@ describe('a typed county name', () => {
     bare.controller.say('Cobb');
     await bare.settle();
     expect(bare.state().step).toBe('county');
-    expect(bare.state().confirm).toEqual({
+    expect(bare.state().confirm).toMatchObject({
       step: 'county',
       optionId: '13067',
       label: 'Cobb County',
@@ -632,7 +632,11 @@ describe('what the visitor says ahead of the questions (Stephen’s test, 2026-1
       'Are you in Massachusetts?',
     ]);
     expect(h.state().step).toBe('location');
-    expect(h.state().confirm).toEqual({ step: 'location', optionId: 'MA', label: 'Massachusetts' });
+    expect(h.state().confirm).toMatchObject({
+      step: 'location',
+      optionId: 'MA',
+      label: 'Massachusetts',
+    });
 
     h.controller.confirmAnswer(true);
     await h.settle();
@@ -653,7 +657,7 @@ describe('what the visitor says ahead of the questions (Stephen’s test, 2026-1
     await h.settle();
 
     expect(h.texts().at(-1)).toBe('You mentioned a mediator. Shall I look for mediators?');
-    expect(h.state().confirm).toEqual({
+    expect(h.state().confirm).toMatchObject({
       step: 'category',
       optionId: 'mediator',
       label: 'Mediator',
@@ -725,6 +729,93 @@ describe('what the visitor says ahead of the questions (Stephen’s test, 2026-1
     }
   });
 
+  it('typing something else while "Are you in Massachusetts?" waits asks it again (Stephen typed on)', async () => {
+    const hinted = option('divorce', {
+      reply: 'I can help you find a mediator near Boston.',
+      hints: { category: 'mediator', state: 'MA', place: 'Boston' },
+    });
+    // Made when asked for, so the dropped connection is not a rejection waiting unhandled.
+    const replies: Array<() => Promise<InterpretResponse>> = [
+      () => Promise.resolve(hinted),
+      // "I'm looking for a list of mediators": the same kind of professional.
+      () =>
+        Promise.resolve({
+          ...unclear,
+          source: 'ai' as const,
+          hints: { category: 'mediator' as const, state: null, place: null },
+        }),
+      // "What does a mediator do?"
+      () =>
+        Promise.resolve({
+          ...unclear,
+          kind: 'question' as const,
+          reply: 'A mediator helps you both reach agreements.',
+          source: 'ai' as const,
+        }),
+      // "I need a divorce attorney": a new kind of professional.
+      () =>
+        Promise.resolve({
+          ...unclear,
+          source: 'ai' as const,
+          hints: { category: 'attorney' as const, state: null, place: null },
+        }),
+      // The connection dropped.
+      () => failure(0, 'network'),
+    ];
+    const h = harness({
+      states,
+      counties,
+      interpret: vi.fn(() => replies.shift()?.() ?? Promise.resolve(unclear)),
+      county: vi.fn(() => Promise.resolve(boston)),
+    });
+    h.controller.start();
+    await h.settle();
+    h.controller.say("I'm looking for a mediator in the boston area");
+    await h.settle();
+    const waiting = h.state().confirm;
+    expect(waiting).toMatchObject({
+      step: 'location',
+      optionId: 'MA',
+      question: 'Are you in Massachusetts?',
+    });
+
+    h.controller.say("I'm looking for a list of mediators");
+    await h.settle();
+    expect(h.texts().slice(-2)).toEqual([
+      "Got it, I'll look for mediators.",
+      'Are you in Massachusetts?',
+    ]);
+    expect(h.texts()).not.toContain(copy.fallback.didNotCatch);
+    expect(h.state().confirm).toEqual(waiting);
+
+    h.controller.say('What does a mediator do?');
+    await h.settle();
+    expect(h.texts().slice(-2)).toEqual([
+      'A mediator helps you both reach agreements.',
+      'Are you in Massachusetts?',
+    ]);
+    expect(h.state().confirm).toEqual(waiting);
+
+    h.controller.say('I need a divorce attorney');
+    await h.settle();
+    expect(h.texts().slice(-2)).toEqual([
+      "Got it, I'll look for divorce attorneys.",
+      'Are you in Massachusetts?',
+    ]);
+    expect(h.state().remembered.category).toBe('attorney');
+    expect(h.state().confirm).toEqual(waiting);
+
+    h.controller.say('hello?');
+    await h.settle();
+    expect(h.texts().at(-1)).toBe(copy.widget.connectionError);
+    expect(h.state().confirm).toEqual(waiting);
+
+    // And Yes still works.
+    h.controller.say('yes');
+    await h.settle();
+    expect(h.state().step).toBe('county_confirm');
+  });
+
   it('"I need a divorce attorney" at the state question: noted, and the question asked again', async () => {
     const h = harness({
       interpret: vi.fn(() =>
@@ -745,6 +836,26 @@ describe('what the visitor says ahead of the questions (Stephen’s test, 2026-1
     expect(h.texts()).not.toContain(copy.fallback.didNotCatch);
     expect(h.state().step).toBe('location');
     expect(h.state().remembered.category).toBe('attorney');
+  });
+
+  it('at the kind-of-professional question, a mentioned kind is offered as "Did you mean…?"', async () => {
+    const h = harness({
+      interpret: vi.fn(() =>
+        Promise.resolve({
+          ...unclear,
+          source: 'ai' as const,
+          hints: { category: 'mediator' as const, state: null, place: null },
+        }),
+      ),
+    });
+    await advanceTo(h, 'category');
+    h.controller.say('someone neutral for both of us, a mediator I think');
+    await h.settle();
+    expect(h.texts().at(-1)).toBe(fill(copy.fallback.didYouMean, { label: 'Mediator' }));
+    expect(h.state().confirm).toMatchObject({ step: 'category', optionId: 'mediator' });
+    h.controller.confirmAnswer(true);
+    await h.settle();
+    expect(h.state().answers.category).toBe('mediator');
   });
 
   it('acknowledges a request at the first question when the AI had nothing to add', async () => {
@@ -794,7 +905,7 @@ describe('what the visitor says ahead of the questions (Stephen’s test, 2026-1
     expect(h.state().step).toBe('results');
     h.controller.back();
     expect(h.state().step).toBe('category');
-    expect(h.state().confirm).toEqual({
+    expect(h.state().confirm).toMatchObject({
       step: 'category',
       optionId: 'mediator',
       label: 'Mediator',
@@ -884,7 +995,7 @@ describe('typed categories', () => {
     await advanceTo(h, 'category');
     h.controller.say('arbitrator');
     await h.settle();
-    expect(h.state().confirm).toEqual({
+    expect(h.state().confirm).toMatchObject({
       step: 'category',
       optionId: 'arbitrator',
       label: copy.categories.arbitrator,

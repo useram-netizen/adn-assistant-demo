@@ -77,6 +77,8 @@ export interface Confirm {
   step: StepId;
   optionId: string;
   label: string;
+  /** How it was asked ("Are you in Massachusetts?"), to ask it again. */
+  question?: string;
 }
 
 /**
