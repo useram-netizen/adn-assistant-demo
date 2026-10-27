@@ -1,7 +1,9 @@
 import { describe, expect, it } from 'vitest';
 import {
+  allCategoriesFromText,
   categoryFromText,
   everydayMessage,
+  keywordInterpret,
   placeFromText,
   welcomeFromText,
 } from '../src/ai/keywords.js';
@@ -71,5 +73,36 @@ describe('keywords (when the AI is not available)', () => {
     ['nowhere in particular', { state: null, place: null }],
   ])('finds the state and place in "%s"', (text, expected) => {
     expect(placeFromText(text, geo)).toEqual(expected);
+  });
+
+  it('detects multiple categories when user mentions more than one profession', () => {
+    const cats = allCategoriesFromText('I might need an attorney and a therapist');
+    expect(cats).toContain('attorney');
+    expect(cats).toContain('therapist');
+    expect(cats).toHaveLength(2);
+  });
+
+  it('handles common typos and synonyms in category matching', () => {
+    expect(categoryFromText('looking for an atorney')).toBe('attorney');
+    expect(categoryFromText('need a lawer')).toBe('attorney');
+    expect(categoryFromText('need a meditator')).toBe('mediator');
+    expect(categoryFromText('looking for a thearpist')).toBe('therapist');
+  });
+
+  it('prompts to specify when multiple categories are matched at category step', () => {
+    const spec = {
+      step: 'category' as const,
+      question: 'What kind of professional are you looking for?',
+      options: [
+        { id: 'attorney', label: 'Divorce attorney', keys: ['attorney'] },
+        { id: 'therapist', label: 'Therapist or counselor', keys: ['therapist'] },
+        { id: 'mediator', label: 'Mediator', keys: ['mediator'] },
+      ],
+    };
+    const result = keywordInterpret(spec, 'I might need an attorney and a therapist', geo);
+    expect(result.optionId).toBeNull();
+    expect(result.reply).toContain('Divorce attorney');
+    expect(result.reply).toContain('Therapist or counselor');
+    expect(result.reply).toContain('Which one would you like to search for first?');
   });
 });

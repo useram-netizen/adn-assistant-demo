@@ -1044,21 +1044,37 @@ describe('after the safety card', () => {
 });
 
 describe('typed categories', () => {
-  it('any kind of professional can be typed at the category step, even from "More options"', async () => {
+  it('any kind of professional can be typed at the category step and is accepted directly', async () => {
     const h = harness({ interpret: vi.fn(() => Promise.resolve(option('arbitrator'))) });
     await advanceTo(h, 'category');
     h.controller.say('arbitrator');
     await h.settle();
-    expect(h.state().confirm).toMatchObject({
-      step: 'category',
-      optionId: 'arbitrator',
-      label: copy.categories.arbitrator,
-    });
-    h.controller.confirmAnswer(true);
-    await h.settle();
     expect(h.state().step).toBe('results');
     expect(h.state().answers.category).toBe('arbitrator');
     expect(h.api.match).toHaveBeenCalledWith(expect.objectContaining({ category: 'arbitrator' }));
+  });
+
+  it('prompts to specify when multiple categories are typed, without buttons', async () => {
+    const multiReply =
+      'It sounds like you may need both a Divorce attorney and a Therapist or counselor. Which one would you like to search for first? Please type your choice below.';
+    const h = harness({
+      interpret: vi.fn(() =>
+        Promise.resolve({
+          kind: 'question' as const,
+          optionId: null,
+          reply: multiReply,
+          safety: false,
+          sharesSituation: false,
+          source: 'keyword' as const,
+        }),
+      ),
+    });
+    await advanceTo(h, 'category');
+    h.controller.say('I need an attorney and a therapist');
+    await h.settle();
+    expect(h.texts().at(-1)).toBe(multiReply);
+    expect(h.state().step).toBe('category');
+    expect(h.state().confirm).toBeNull();
   });
 
   it('and a main kind typed at "More options", or any kind typed when not sure', async () => {

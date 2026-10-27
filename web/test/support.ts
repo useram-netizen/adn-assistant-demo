@@ -1,5 +1,6 @@
 import type {
   CountyFromPlaceResponse,
+  InterpretRequest,
   InterpretResponse,
   LeadRequest,
   MatchRequest,
@@ -114,7 +115,17 @@ export function fakeApi(overrides: Partial<Api> = {}): FakeApi {
             },
       ),
     ),
-    interpret: vi.fn(() => Promise.resolve(unclear)),
+    interpret: vi.fn((req: InterpretRequest) => {
+      if (req.step === 'category') {
+        if (/attorney|lawyer/i.test(req.text)) {
+          return Promise.resolve(option('attorney', { source: 'exact' }));
+        }
+        if (/mediator/i.test(req.text)) {
+          return Promise.resolve(option('mediator', { source: 'exact' }));
+        }
+      }
+      return Promise.resolve(unclear);
+    }),
     county: vi.fn(() =>
       Promise.resolve<CountyFromPlaceResponse>({
         countyFips: null,

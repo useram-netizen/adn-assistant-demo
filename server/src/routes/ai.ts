@@ -170,14 +170,15 @@ export function aiRouter({ config, geo, events, client, rateLimitEnabled }: AiRo
     // greetings, thanks and "what can you do?" get a ready reply.
     const understood = keywordInterpret(spec, text, geo);
     const everyday = understood.optionId ? null : everydayMessage(text);
+    const replyText = everyday ? copy.fallback[everyday] : (understood.reply ?? '');
     const body: InterpretResponse = {
-      kind: understood.optionId ? 'option' : everyday ? 'question' : 'unclear',
+      kind: understood.optionId ? 'option' : replyText ? 'question' : 'unclear',
       optionId: understood.optionId,
-      reply: everyday ? copy.fallback[everyday] : '',
+      reply: replyText,
       safety,
       sharesSituation: false,
       hints: understood.hints,
-      source: understood.optionId || everyday ? 'keyword' : 'fallback',
+      source: understood.optionId || replyText ? 'keyword' : 'fallback',
     };
     res.json(body);
   });

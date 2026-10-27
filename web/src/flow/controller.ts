@@ -111,8 +111,8 @@ const ASK_AGAIN = new Set<StepId>([
   'subcategory',
 ]);
 
-/** Typed answers accepted straight away (spec: at welcome and stage). */
-const ACCEPT_DIRECTLY = new Set<StepId>(['welcome', 'stage']);
+/** Typed answers accepted straight away (spec: at welcome, stage, and category). */
+const ACCEPT_DIRECTLY = new Set<StepId>(['welcome', 'stage', 'category']);
 /** Options that are never asked about with "Did you mean…?". */
 const NO_CONFIRM = new Set(['not_sure', 'more', 'any', 'see_all']);
 
@@ -530,7 +530,10 @@ export class ChatController {
         return;
       }
     } else if (result.kind === 'question' && result.reply) {
-      if (!(await this.botSays([result.reply, ...again], epoch))) return;
+      const messages = result.reply.includes('Which one would you like')
+        ? [result.reply]
+        : [result.reply, ...again];
+      if (!(await this.botSays(messages, epoch))) return;
       askAgain();
       await this.refreshAnalysisAfterSharing(step, epoch);
       return;

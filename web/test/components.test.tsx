@@ -438,7 +438,10 @@ describe('the whole widget', () => {
     await user.click(screen.getByRole('option', { name: 'Fulton County' }));
     await user.click(await button(copy.steps.stage.options.ready));
     await user.click(await button('Skip'));
-    await user.click(await button('Divorce attorney'));
+    await user.type(
+      screen.getByRole('textbox', { name: copy.widget.inputLabel }),
+      'Divorce attorney{Enter}',
+    );
     expect(
       await screen.findByText(/Here are divorce attorneys who serve Fulton County, Georgia:/),
     ).toBeInTheDocument();
@@ -456,7 +459,10 @@ describe('the whole widget', () => {
     await user.type(await screen.findByRole('combobox', { name: 'Your county' }), 'fulton{Enter}');
     await user.click(await button(copy.steps.stage.options.ready));
     await user.click(await button('Skip'));
-    await user.click(await button('Divorce attorney'));
+    await user.type(
+      screen.getByRole('textbox', { name: copy.widget.inputLabel }),
+      'Divorce attorney{Enter}',
+    );
     await screen.findByRole('list', { name: /Here are divorce attorneys/ });
 
     expect(screen.getByRole('button', { name: 'Contact selected (0)' })).toBeDisabled();
@@ -581,7 +587,10 @@ describe('the whole widget', () => {
     await user.type(await screen.findByRole('combobox', { name: 'Your county' }), 'fulton{Enter}');
     await user.click(await button(copy.steps.stage.options.ready));
     await user.click(await button('Skip'));
-    await user.click(await button('Divorce attorney'));
+    await user.type(
+      screen.getByRole('textbox', { name: copy.widget.inputLabel }),
+      'Divorce attorney{Enter}',
+    );
     expect(await screen.findByText(copy.widget.requestError)).toBeInTheDocument();
     await user.click(await button(copy.widget.retry));
     expect(await screen.findByText(/Here are divorce attorneys/)).toBeInTheDocument();

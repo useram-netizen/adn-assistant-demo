@@ -106,6 +106,20 @@ describe('matching on the real member list (spec: "Expected spot checks")', () =
       expect(member.searchable && member.active).toBe(true);
     }
   });
+
+  it('places Tracy (the founder) at the very top of matching results when she matches', () => {
+    const { found } = count('GA', '13121', 'attorney', null);
+    expect(found.length).toBeGreaterThan(0);
+    expect(found[0]?.email).toBe('tracy@amicabledivorcenetwork.com');
+  });
+
+  it('returns Certified Amicable Divorce Professionals in Bay County, FL when searching for attorney', () => {
+    const { found } = count('FL', '12005', 'attorney', null);
+    expect(found.length).toBe(5);
+    for (const member of found) {
+      expect(member.badges).toContain('cadp');
+    }
+  });
 });
 
 describe('matching rules (spec: "Matching")', () => {

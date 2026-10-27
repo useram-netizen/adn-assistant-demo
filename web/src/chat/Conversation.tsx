@@ -25,6 +25,7 @@ const LONG_STEPS: ReadonlySet<StepId> = new Set(['results', 'category_help', 'co
 function placeholderFor(step: StepId | null): string {
   if (step === 'county_help') return copy.steps.countyHelp.placeholder;
   if (step === 'situation') return copy.steps.situation.placeholder;
+  if (step === 'category') return 'Type the kind of professional or help you need…';
   return copy.widget.inputPlaceholder;
 }
 
@@ -58,7 +59,11 @@ export function Conversation({ embed, config, controller }: ConversationProps) {
     const coarse = window.matchMedia?.('(pointer: coarse)').matches ?? false;
     // Where typing is the answer the text box gets the focus (on a touch screen only when it is
     // the only thing to answer with, as when asking for a city or ZIP code).
-    if (state.step === 'county_help' || (state.step === 'situation' && !coarse)) {
+    if (
+      state.step === 'county_help' ||
+      state.step === 'category' ||
+      (state.step === 'situation' && !coarse)
+    ) {
       textarea?.focus({ preventScroll: true });
       return;
     }

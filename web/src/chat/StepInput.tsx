@@ -172,6 +172,7 @@ export function StepInput({ state, controller, links, labelledBy, ref }: StepInp
         break;
       }
       case 'county_help':
+      case 'category':
         content = null;
         break;
       default:

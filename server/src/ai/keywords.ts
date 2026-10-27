@@ -1,3 +1,4 @@
+import { copy } from '../config/copy.js';
 import type { CategoryKey } from '../config/taxonomy.js';
 import type { Geo } from '../domain/types.js';
 import type { InterpretHints } from './calls.js';
@@ -13,18 +14,33 @@ import type { StepSpec } from './options.js';
 
 /** The kinds of professional, most specific first ("bankruptcy attorney" before "attorney"). */
 const CATEGORY_WORDS: ReadonlyArray<readonly [CategoryKey, RegExp]> = [
-  ['bankruptcy_attorney', /\bbankrupt/],
-  ['qdro_attorney', /\bqdros?\b/],
-  ['estate_attorney', /\bestate[- ]plann|\bwills? and trusts?\b|\bestate (?:attorney|lawyer)/],
-  ['paralegal', /\bparalegal|\bdocument prep/],
-  ['parenting_coordinator', /\bparent(?:ing)? coordinator/],
-  ['arbitrator', /\barbitrat/],
-  ['mediator', /\bmediat/],
-  ['financial', /\bcdfa\b|\bfinancial\b|\baccountant|\bcpa\b|\bforensic|\bplanner\b/],
-  ['real_estate', /\brealtor|\breal estate|\bmortgage|\bappraiser\b/],
-  ['therapist', /\btherap|\bcounsell?or\b|\bcounsell?ing\b|\bpsycholog|\bmental health/],
-  ['coach', /\bcoach/],
-  ['attorney', /\battorney|\blawyer|\blegal (?:help|advice|representation)/],
+  ['bankruptcy_attorney', /\b(?:bankrupt\w*)\b/i],
+  ['qdro_attorney', /\b(?:qdros?\b|qualified domestic relations order)/i],
+  ['estate_attorney', /\b(?:estate[- ]plann\w*|wills? and trusts?|estate (?:attorney|lawyer))/i],
+  ['paralegal', /\b(?:paralegal\w*|document prep\w*|legal docs?\b)\b/i],
+  ['parenting_coordinator', /\b(?:parent(?:ing)? coordinator\w*|parenting coordination)\b/i],
+  ['arbitrator', /\b(?:arbitrat\w*)\b/i],
+  [
+    'mediator',
+    /\b(?:mediat\w*|meditator|dispute resolution|settle(?:ment)?|collaborative (?:divorce|law)|peaceful resolution)\b/i,
+  ],
+  [
+    'financial',
+    /\b(?:cdfa\b|financial\w*|finance\w*|accountant\w*|cpa\b|forensic|wealth|planner\b|pension\w*|401k|retirement split|tax advice|property division|division of assets?|asset division|asset split|assets?|debt)\b/i,
+  ],
+  [
+    'real_estate',
+    /\b(?:realtor\w*|real estate|mortgage\w*|apprais\w*|home valuation|house|sell(?:ing)? (?:the )?(?:house|home)|refinanc\w*|equity)\b/i,
+  ],
+  [
+    'therapist',
+    /\b(?:therap\w*|thearpist|therepist|counsell?or\w*|counsell?ing\b|psycholog\w*|psychiatr\w*|mental health|emotional (?:support|help)|trauma|coping|grief|stress)\b/i,
+  ],
+  ['coach', /\b(?:coach\w*|divorce coach\w*|life coach\w*|guidance|transition coach)\b/i],
+  [
+    'attorney',
+    /\b(?:attorney\w*|atorney|attourney|attorny|lawyer\w*|lawer|counsel\b|legal (?:help|advice|rep|representation)|litigat\w*|family law\w*|custody (?:lawyer|attorney)|divorce (?:lawyer|attorney)|law firm)\b/i,
+  ],
 ];
 
 /** "my lawyer", "our divorce mediator": one they already have, not one they are looking for. */
@@ -32,14 +48,40 @@ const ALREADY_HAVE = /\b(?:my|our|his|her|their)\s+(?:[\p{L}-]+\s+)?$/u;
 
 /** The kind of professional the text asks for, or null. */
 export function categoryFromText(text: string): CategoryKey | null {
+  const all = allCategoriesFromText(text);
+  return all[0] ?? null;
+}
+
+/** Finds all distinct matching professional categories in the text. */
+export function allCategoriesFromText(text: string): CategoryKey[] {
   const lower = text.toLowerCase();
+  const matched = new Set<CategoryKey>();
   for (const [key, pattern] of CATEGORY_WORDS) {
-    const match = pattern.exec(lower);
-    if (!match) continue;
-    if (ALREADY_HAVE.test(lower.slice(Math.max(0, match.index - 30), match.index))) continue;
-    return key;
+    const globalPattern = new RegExp(pattern.source, 'gi');
+    let match: RegExpExecArray | null;
+    while ((match = globalPattern.exec(lower)) !== null) {
+      if (ALREADY_HAVE.test(lower.slice(Math.max(0, match.index - 30), match.index))) {
+        continue;
+      }
+      matched.add(key);
+      break;
+    }
   }
-  return null;
+  // If a specific attorney subtype matched, don't count generic attorney unless another mention exists
+  if (
+    matched.has('attorney') &&
+    (matched.has('bankruptcy_attorney') ||
+      matched.has('qdro_attorney') ||
+      matched.has('estate_attorney'))
+  ) {
+    const genericPattern = /\b(?:attorney\w*|atorney|attourney|attorny|lawyer\w*|lawer|legal\b)/gi;
+    let count = 0;
+    while (genericPattern.exec(lower) !== null) count++;
+    if (count <= 1) {
+      matched.delete('attorney');
+    }
+  }
+  return Array.from(matched);
 }
 
 const PROFESSIONS =
@@ -163,14 +205,19 @@ export function everydayMessage(text: string): 'hello' | 'thanks' | 'about' | nu
   return null;
 }
 
+const NOT_SURE_WORDS = /\b(?:not sure|unsure|don'?t know|no idea|help me choose|recommend)\b/i;
+
 /** What the text says, without the AI: an option of the step (or null) and the hints. */
 export function keywordInterpret(
   spec: StepSpec,
   text: string,
   geo: Geo,
-): { optionId: string | null; hints: InterpretHints } {
-  const hints: InterpretHints = { category: categoryFromText(text), ...placeFromText(text, geo) };
+): { optionId: string | null; hints: InterpretHints; reply?: string } {
+  const allCategories = allCategoriesFromText(text);
+  const hints: InterpretHints = { category: allCategories[0] ?? null, ...placeFromText(text, geo) };
   let optionId: string | null = null;
+  let reply: string | undefined = undefined;
+
   switch (spec.step) {
     case 'welcome':
       optionId = welcomeFromText(text);
@@ -180,12 +227,36 @@ export function keywordInterpret(
       break;
     case 'category':
     case 'category_more':
-    case 'category_help':
-      optionId = hints.category;
+    case 'category_help': {
+      const lower = text.toLowerCase();
+      if (everydayMessage(text)) {
+        optionId = null;
+        break;
+      }
+      if (NOT_SURE_WORDS.test(lower) && allCategories.length === 0) {
+        optionId = 'not_sure';
+        break;
+      }
+      if (allCategories.length === 1) {
+        optionId = allCategories[0] ?? null;
+      } else if (allCategories.length > 1) {
+        optionId = null;
+        const labels = allCategories.map((cat) => copy.categories[cat]);
+        const formatted =
+          labels.length === 2
+            ? `both a ${labels[0]} and a ${labels[1]}`
+            : labels.slice(0, -1).join(', ') + `, and ${labels[labels.length - 1]}`;
+        reply = `It sounds like you may need ${formatted}. Which one would you like to search for first? Please type your choice below.`;
+      } else {
+        optionId = null;
+        reply =
+          "I couldn't quite tell which kind of professional you need. You can type what you need (such as legal advice, mediation, financial guidance, emotional support, or real estate).";
+      }
       break;
+    }
     default:
       break;
   }
   const offered = optionId !== null && spec.options.some((option) => option.id === optionId);
-  return { optionId: offered ? optionId : null, hints };
+  return { optionId: offered ? optionId : null, hints, reply };
 }
