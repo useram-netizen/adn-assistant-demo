@@ -447,9 +447,12 @@ describe('the whole widget', () => {
     ).toBeInTheDocument();
     expect(api.match).toHaveBeenCalledOnce();
     const cardsList = screen.getByRole('list', { name: /Here are divorce attorneys/ });
-    expect(cardsList.children).toHaveLength(6);
-    expect(within(cardsList).getAllByText('Platinum Member')).toHaveLength(2);
-    expect(within(cardsList).getAllByText('Gold Member')).toHaveLength(2);
+    expect(within(cardsList).getAllByText('Certified Amicable Divorce Professional')).toHaveLength(
+      1,
+    );
+    expect(within(cardsList).getAllByText('Founding Member')).toHaveLength(1);
+    expect(within(cardsList).queryByText('Platinum Member')).toBeNull();
+    expect(within(cardsList).queryByText('Gold Member')).toBeNull();
   });
 
   it('selects professionals with toggle buttons, then contacts them with the form', async () => {

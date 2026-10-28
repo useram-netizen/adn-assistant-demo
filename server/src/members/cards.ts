@@ -35,11 +35,13 @@ export function toCard(
  */
 export function cardLabels(
   member: Pick<Member, 'professions'>,
-  input: Pick<MatchInput, 'category' | 'subcategory'>,
+  input: Pick<MatchInput, 'category' | 'subcategory' | 'categories'>,
 ): string[] {
+  const targetCategories =
+    input.categories && input.categories.length > 0 ? input.categories : [input.category];
   const subtype = specificSubtype(input.subcategory);
   const rank = (profession: MemberProfession): number => {
-    if (profession.category !== input.category) return 3;
+    if (!targetCategories.includes(profession.category)) return 3;
     if (subtype !== null && profession.subtype === subtype) return 0;
     return profession.subtype === null ? 2 : 1;
   };
@@ -84,10 +86,9 @@ export function serviceArea(
     : fill(copy.cards.serves, { list });
 }
 
-/** Platinum or Gold (Silver gets no tier badge), then CADP and Founding Member. */
+/** CADP and Founding Member badges. Platinum and Gold tiers are hidden from public view. */
 export function cardBadges(member: Pick<Member, 'tier' | 'badges'>): CardBadge[] {
   const badges: CardBadge[] = [];
-  if (member.tier === 'platinum' || member.tier === 'gold') badges.push(member.tier);
   if (member.badges.includes('cadp')) badges.push('cadp');
   if (member.badges.includes('founding')) badges.push('founding');
   return badges;

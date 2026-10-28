@@ -1,5 +1,6 @@
 import type { InterpretResponse, LeadResponse } from '@adn/api';
 import { copy, fill } from '@adn/copy';
+import type { CategoryKey } from '@adn/taxonomy';
 import { describe, expect, it, vi } from 'vitest';
 import { stepOptions } from '../src/flow/options';
 import { ApiError } from '../src/lib/api';
@@ -726,6 +727,7 @@ describe('what the visitor says ahead of the questions (Stephen’s test, 2026-1
     expect(h.texts().filter((text) => text === 'Are you in Massachusetts?')).toHaveLength(1);
     expect(h.state().remembered).toEqual({
       category: null,
+      categories: null,
       state: null,
       place: null,
       placeState: null,
@@ -1869,5 +1871,34 @@ describe('the typing indicator', () => {
       await deadMoments(h, () => h.controller.say('My husband hits me and I’m scared to leave')),
     ).toBe(0);
     expect(h.state().step).toBe('location');
+  });
+
+  it('searches both categories and shows combined message when multiple categories are typed', async () => {
+    const h = harness({
+      interpret: vi.fn(() =>
+        Promise.resolve({
+          kind: 'option' as const,
+          optionId: 'attorney',
+          categories: ['attorney', 'mediator'] as CategoryKey[],
+          reply: '',
+          safety: false,
+          sharesSituation: false,
+          source: 'keyword' as const,
+        }),
+      ),
+    });
+    await advanceTo(h, 'category');
+    h.controller.say('divorce attorney or mediator');
+    await h.settle();
+    expect(h.state().step).toBe('results');
+    expect(h.state().answers.categories).toEqual(['attorney', 'mediator']);
+    expect(h.api.match).toHaveBeenCalledWith(
+      expect.objectContaining({
+        category: 'attorney',
+        categories: ['attorney', 'mediator'],
+        subcategory: null,
+      }),
+    );
+    expect(h.texts().at(-1)).toContain('divorce attorneys and mediators');
   });
 });

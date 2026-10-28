@@ -10,7 +10,12 @@ import {
   type AiOutcome,
   type InterpretHints,
 } from '../ai/calls.js';
-import { everydayMessage, keywordInterpret } from '../ai/keywords.js';
+import {
+  allCategoriesFromText,
+  everydayMessage,
+  keywordInterpret,
+  placeFromText,
+} from '../ai/keywords.js';
 import type { AiCallKind, AiClient } from '../ai/client.js';
 import { SessionBudget } from '../ai/limits.js';
 import { copy } from '../config/copy.js';
@@ -107,6 +112,7 @@ export function aiRouter({ config, geo, events, client, rateLimitEnabled }: AiRo
       text: visitorTextSchema,
       state: stateSchema(geo).optional(),
       category: z.enum(CATEGORY_KEYS).optional(),
+      candidateCategories: z.array(z.enum(CATEGORY_KEYS)).optional(),
       // Only context for the AI: anything unknown is ignored.
       at: z.enum(STEP_IDS).optional().catch(undefined),
     })
@@ -132,7 +138,7 @@ export function aiRouter({ config, geo, events, client, rateLimitEnabled }: AiRo
   router.post('/ai/interpret', async (req, res) => {
     const parsed = interpretBody.safeParse(req.body);
     if (!parsed.success) return sendValidationError(res, parsed.error);
-    const { sessionId, site, step, text, state, category, at } = parsed.data;
+    const { sessionId, site, step, text, state, category, candidateCategories, at } = parsed.data;
     const safety = matchesSafetyKeywords(text);
     const spec = specs(step, { state, category });
 
@@ -146,6 +152,30 @@ export function aiRouter({ config, geo, events, client, rateLimitEnabled }: AiRo
         sharesSituation: false,
         hints: NO_HINTS,
         source: 'exact',
+      };
+      return void res.json(body);
+    }
+
+    const allCategories = allCategoriesFromText(text);
+    const isBothOrEither =
+      Boolean(candidateCategories && candidateCategories.length > 1) &&
+      /\b(?:both|either|all of (?:the above|them)|all)\b/i.test(text);
+    const targetCats =
+      allCategories.length > 1 ? allCategories : isBothOrEither ? candidateCategories! : null;
+    if (
+      (step === 'category' || step === 'category_more' || step === 'category_help') &&
+      targetCats
+    ) {
+      const optionId = targetCats[0]!;
+      const body: InterpretResponse = {
+        kind: 'option',
+        optionId,
+        categories: targetCats,
+        reply: '',
+        safety,
+        sharesSituation: false,
+        hints: { category: optionId, categories: targetCats, ...placeFromText(text, geo) },
+        source: 'keyword',
       };
       return void res.json(body);
     }
@@ -168,12 +198,13 @@ export function aiRouter({ config, geo, events, client, rateLimitEnabled }: AiRo
 
     // No AI: keywords still understand the common requests ("I need a divorce attorney"), and
     // greetings, thanks and "what can you do?" get a ready reply.
-    const understood = keywordInterpret(spec, text, geo);
+    const understood = keywordInterpret(spec, text, geo, candidateCategories);
     const everyday = understood.optionId ? null : everydayMessage(text);
     const replyText = everyday ? copy.fallback[everyday] : (understood.reply ?? '');
     const body: InterpretResponse = {
       kind: understood.optionId ? 'option' : replyText ? 'question' : 'unclear',
       optionId: understood.optionId,
+      categories: understood.categories,
       reply: replyText,
       safety,
       sharesSituation: false,

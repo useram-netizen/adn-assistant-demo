@@ -40,6 +40,7 @@ interface ShowOptions {
 
 const NOTHING_REMEMBERED: Remembered = {
   category: null,
+  categories: null,
   state: null,
   place: null,
   placeState: null,
@@ -380,7 +381,7 @@ export class ChatController {
   // ---------------------------------------------------------------- Choices
 
   /** Moves on after an answer. The visitor's own message has already been shown. */
-  private applyChoice(step: StepId, id: string, label: string): void {
+  private applyChoice(step: StepId, id: string, label: string, categories?: CategoryKey[]): void {
     this.deps.tracker.track('answer', { step, value: id });
     const { countyCandidate } = this.state;
     switch (step) {
@@ -421,7 +422,14 @@ export class ChatController {
           void this.run((epoch) =>
             this.botSays([copy.steps.categoryHelp.explain], epoch).then(() => undefined),
           );
-        } else if (isCategoryKey(id)) this.chooseCategory(id);
+        } else if (isCategoryKey(id)) {
+          const cats = categories ?? this.state.remembered.categories ?? undefined;
+          if (cats && cats.length > 1) {
+            this.go('results', { category: id, categories: cats, subcategory: 'any' });
+          } else {
+            this.chooseCategory(id);
+          }
+        }
         break;
       case 'subcategory':
         this.go('results', { subcategory: id });
@@ -487,6 +495,9 @@ export class ChatController {
         text,
         ...(apiStep === 'county' && answers.state ? { state: answers.state } : {}),
         ...(apiStep === 'subcategory' && answers.category ? { category: answers.category } : {}),
+        ...(this.state.remembered.categories
+          ? { candidateCategories: this.state.remembered.categories }
+          : {}),
         // Where the visitor is, so a reply fits (the end of the professional path, the results…).
         at: step,
       });
@@ -519,7 +530,7 @@ export class ChatController {
         const exact = result.source === 'exact' && (step !== 'county' || namesACounty(text));
         const direct = ACCEPT_DIRECTLY.has(step) || exact;
         if (direct || NO_CONFIRM.has(result.optionId)) {
-          this.applyChoice(step, result.optionId, label);
+          this.applyChoice(step, result.optionId, label, result.categories);
           return;
         }
         const ask = fill(copy.fallback.didYouMean, {
@@ -747,22 +758,36 @@ export class ChatController {
         ];
       case 'subcategory':
         return [copy.steps.subcategory.message];
-      case 'results':
+      case 'results': {
         // One message, so the list starts right under its introduction.
+        const categoryLabel =
+          a.categories && a.categories.length > 1
+            ? a.categories.map((c) => copy.categoriesPlural[c]).join(' and ')
+            : a.category
+              ? copy.categoriesPlural[a.category]
+              : '';
         return [
           `${fill(copy.steps.results.message, {
-            category: a.category ? copy.categoriesPlural[a.category] : '',
+            category: categoryLabel,
             county: a.countyName ?? '',
             state: a.stateName ?? '',
           })}\n${copy.steps.results.instructions}`,
         ];
-      case 'no_match':
+      }
+      case 'no_match': {
+        const noMatchCat =
+          a.categories && a.categories.length > 1
+            ? a.categories.map((c) => copy.categoriesWithArticle[c]).join(' or ')
+            : a.category
+              ? copy.categoriesWithArticle[a.category]
+              : '';
         return [
           fill(copy.steps.noMatch.message, {
-            categoryWithArticle: a.category ? copy.categoriesWithArticle[a.category] : '',
+            categoryWithArticle: noMatchCat,
             county: a.countyName ?? '',
           }),
         ];
+      }
       case 'contact':
         return [fill(copy.steps.contact.message, { names: joinNames(this.selectedNames()) })];
       case 'tracy':
@@ -950,6 +975,7 @@ export class ChatController {
         state: answers.state,
         countyFips: answers.countyFips,
         category: answers.category,
+        categories: answers.categories,
         subcategory: answers.subcategory === 'any' ? null : answers.subcategory,
       });
     } catch (error) {
@@ -1000,6 +1026,7 @@ export class ChatController {
           state: answers.state,
           countyFips: answers.countyFips,
           category: answers.category,
+          categories: answers.categories,
           subcategory: answers.subcategory === 'any' ? null : answers.subcategory,
           memberIds: s.results.selected,
         });
@@ -1076,6 +1103,10 @@ export class ChatController {
     const { answers, remembered } = this.state;
     const category =
       !answers.category && hints.category && isCategoryKey(hints.category) ? hints.category : null;
+    const categories =
+      !answers.category && hints.categories && hints.categories.length > 0
+        ? hints.categories.filter(isCategoryKey)
+        : null;
     const state =
       !answers.state && hints.state && /^[A-Z]{2}$/.test(hints.state) ? hints.state : null;
     const place =
@@ -1086,10 +1117,11 @@ export class ChatController {
       state: state !== null && state !== remembered.state,
       place: place !== null && place !== remembered.place,
     };
-    if (!category && !state && !place) return none;
+    if (!category && !state && !place && !categories) return none;
     this.set((s) => ({
       remembered: {
         category: category ?? s.remembered.category,
+        categories: categories ?? s.remembered.categories,
         state: state ?? s.remembered.state,
         place: place ?? s.remembered.place,
         placeState: place ? (hints.state ?? s.answers.state) : s.remembered.placeState,

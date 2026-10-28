@@ -1,4 +1,3 @@
-import { copy } from '../config/copy.js';
 import type { CategoryKey } from '../config/taxonomy.js';
 import type { Geo } from '../domain/types.js';
 import type { InterpretHints } from './calls.js';
@@ -52,10 +51,10 @@ export function categoryFromText(text: string): CategoryKey | null {
   return all[0] ?? null;
 }
 
-/** Finds all distinct matching professional categories in the text. */
+/** Finds all distinct matching professional categories in the text, ordered by appearance. */
 export function allCategoriesFromText(text: string): CategoryKey[] {
   const lower = text.toLowerCase();
-  const matched = new Set<CategoryKey>();
+  const matched = new Map<CategoryKey, number>();
   for (const [key, pattern] of CATEGORY_WORDS) {
     const globalPattern = new RegExp(pattern.source, 'gi');
     let match: RegExpExecArray | null;
@@ -63,7 +62,7 @@ export function allCategoriesFromText(text: string): CategoryKey[] {
       if (ALREADY_HAVE.test(lower.slice(Math.max(0, match.index - 30), match.index))) {
         continue;
       }
-      matched.add(key);
+      matched.set(key, match.index);
       break;
     }
   }
@@ -81,7 +80,9 @@ export function allCategoriesFromText(text: string): CategoryKey[] {
       matched.delete('attorney');
     }
   }
-  return Array.from(matched);
+  return Array.from(matched.entries())
+    .sort((a, b) => a[1] - b[1])
+    .map(([key]) => key);
 }
 
 const PROFESSIONS =
@@ -212,11 +213,31 @@ export function keywordInterpret(
   spec: StepSpec,
   text: string,
   geo: Geo,
-): { optionId: string | null; hints: InterpretHints; reply?: string } {
-  const allCategories = allCategoriesFromText(text);
-  const hints: InterpretHints = { category: allCategories[0] ?? null, ...placeFromText(text, geo) };
+  candidateCategories?: CategoryKey[],
+): {
+  optionId: string | null;
+  hints: InterpretHints;
+  reply?: string;
+  categories?: CategoryKey[];
+} {
+  let allCategories = allCategoriesFromText(text);
+  const lower = text.toLowerCase();
+  if (
+    allCategories.length === 0 &&
+    candidateCategories &&
+    candidateCategories.length > 0 &&
+    /\b(?:both|either|all of (?:the above|them)|all)\b/i.test(lower)
+  ) {
+    allCategories = candidateCategories;
+  }
+  const hints: InterpretHints = {
+    category: allCategories[0] ?? null,
+    categories: allCategories.length > 1 ? allCategories : undefined,
+    ...placeFromText(text, geo),
+  };
   let optionId: string | null = null;
   let reply: string | undefined = undefined;
+  let categories: CategoryKey[] | undefined = undefined;
 
   switch (spec.step) {
     case 'welcome':
@@ -228,7 +249,6 @@ export function keywordInterpret(
     case 'category':
     case 'category_more':
     case 'category_help': {
-      const lower = text.toLowerCase();
       if (everydayMessage(text)) {
         optionId = null;
         break;
@@ -237,16 +257,11 @@ export function keywordInterpret(
         optionId = 'not_sure';
         break;
       }
-      if (allCategories.length === 1) {
+      if (allCategories.length >= 1) {
         optionId = allCategories[0] ?? null;
-      } else if (allCategories.length > 1) {
-        optionId = null;
-        const labels = allCategories.map((cat) => copy.categories[cat]);
-        const formatted =
-          labels.length === 2
-            ? `both a ${labels[0]} and a ${labels[1]}`
-            : labels.slice(0, -1).join(', ') + `, and ${labels[labels.length - 1]}`;
-        reply = `It sounds like you may need ${formatted}. Which one would you like to search for first? Please type your choice below.`;
+        if (allCategories.length > 1) {
+          categories = allCategories;
+        }
       } else {
         optionId = null;
         reply =
@@ -258,5 +273,5 @@ export function keywordInterpret(
       break;
   }
   const offered = optionId !== null && spec.options.some((option) => option.id === optionId);
-  return { optionId: offered ? optionId : null, hints, reply };
+  return { optionId: offered ? optionId : null, hints, reply, categories };
 }

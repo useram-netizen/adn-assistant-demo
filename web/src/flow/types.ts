@@ -26,6 +26,8 @@ export interface Answers {
   countyName: string | null;
   stage: StageKey | null;
   category: CategoryKey | null;
+  /** When multiple categories were requested (e.g. attorney and mediator). */
+  categories?: CategoryKey[];
   /** "any" (the whole category) or a subtype of the category. */
   subcategory: string;
   tracyReason: 'no_match' | 'outside' | null;
@@ -88,6 +90,7 @@ export interface Confirm {
  */
 export interface Remembered {
   category: CategoryKey | null;
+  categories: CategoryKey[] | null;
   /** USPS code. */
   state: string | null;
   /** A city, town, county or ZIP code, for finding the county. */

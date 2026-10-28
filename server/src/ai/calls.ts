@@ -172,6 +172,7 @@ export interface InterpretResult {
 
 export interface InterpretHints {
   category: CategoryKey | null;
+  categories?: CategoryKey[];
   state: string | null;
   place: string | null;
 }

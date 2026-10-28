@@ -51,11 +51,13 @@ export function isTracy(member: Pick<Member, 'email' | 'name'>): boolean {
  * If Tracy (the founder) is among the matches, she is always placed at the very top.
  */
 export function match(members: readonly Member[], input: MatchInput, seed: string): Member[] {
+  const targetCategories =
+    input.categories && input.categories.length > 0 ? input.categories : [input.category];
   let found = members.filter(
     (member) =>
       member.searchable &&
       member.active &&
-      offersCategory(member, input.category, input.subcategory) &&
+      targetCategories.some((cat) => offersCategory(member, cat, input.subcategory)) &&
       servesCounty(member, input.state, input.countyFips),
   );
 
@@ -63,7 +65,7 @@ export function match(members: readonly Member[], input: MatchInput, seed: strin
   // Divorce Professionals (CADP) who serve that county so the visitor gets vetted help.
   if (
     found.length === 0 &&
-    input.category === 'attorney' &&
+    targetCategories.includes('attorney') &&
     (!input.subcategory || input.subcategory === ANY_SUBTYPE)
   ) {
     found = members.filter(

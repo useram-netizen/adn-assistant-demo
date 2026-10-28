@@ -225,16 +225,35 @@ describe('result cards (spec: "Each card shows")', () => {
       tier: 'platinum',
       labels: ['Divorce & family law attorney', 'Mediator'],
       serviceArea: 'Serves all of Georgia',
-      badges: ['platinum', 'cadp', 'founding'],
+      badges: ['cadp', 'founding'],
     });
     const mediatorFirst = toCard(platinum!, fulton('mediator'), geo, false);
     expect(mediatorFirst.labels).toEqual(['Mediator', 'Divorce & family law attorney']);
   });
 
-  it('gives Silver no tier badge, and Gold the Gold badge', () => {
+  it('keeps tier badges off cards (only credential badges)', () => {
     const [silver, gold] = members({ 'Membership Tier': 'Silver' }, { 'Membership Tier': 'Gold' });
     expect(toCard(silver!, fulton('attorney'), geo, false).badges).toEqual([]);
-    expect(toCard(gold!, fulton('attorney'), geo, false).badges).toEqual(['gold']);
+    expect(toCard(gold!, fulton('attorney'), geo, false).badges).toEqual([]);
+  });
+
+  it('matches multiple categories when categories is provided', () => {
+    const [attorneyOnly, mediatorOnly] = members(
+      {
+        'Profession(s)': 'Divorce & family law attorney',
+        'County/Parish Coverage': 'Fulton County',
+      },
+      { 'Profession(s)': 'Mediator', 'County/Parish Coverage': 'Fulton County' },
+    );
+    const input: MatchInput = {
+      state: 'GA',
+      countyFips: '13121',
+      category: 'attorney',
+      categories: ['attorney', 'mediator'],
+      subcategory: null,
+    };
+    const matched = match([attorneyOnly!, mediatorOnly!], input, 'seed');
+    expect(matched).toHaveLength(2);
   });
 
   it('lists up to 3 counties, the visitor’s first, then "+ N more"', () => {

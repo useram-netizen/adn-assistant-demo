@@ -107,6 +107,7 @@ export interface MatchInput {
   state: string;
   countyFips: string;
   category: CategoryKey;
+  categories?: CategoryKey[];
   /** A specific subtype, or null for "Any". */
   subcategory: string | null;
 }

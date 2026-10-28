@@ -239,6 +239,7 @@ export function createLeadService(deps: LeadServiceDeps): LeadService {
         state: input.state,
         countyFips: input.countyFips,
         category: input.category,
+        categories: input.categories,
         subcategory: input.subcategory,
       },
       input.sessionId,

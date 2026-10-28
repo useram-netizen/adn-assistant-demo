@@ -89,7 +89,7 @@ describe('keywords (when the AI is not available)', () => {
     expect(categoryFromText('looking for a thearpist')).toBe('therapist');
   });
 
-  it('prompts to specify when multiple categories are matched at category step', () => {
+  it('returns first optionId and all categories when multiple categories are matched at category step', () => {
     const spec = {
       step: 'category' as const,
       question: 'What kind of professional are you looking for?',
@@ -100,9 +100,22 @@ describe('keywords (when the AI is not available)', () => {
       ],
     };
     const result = keywordInterpret(spec, 'I might need an attorney and a therapist', geo);
-    expect(result.optionId).toBeNull();
-    expect(result.reply).toContain('Divorce attorney');
-    expect(result.reply).toContain('Therapist or counselor');
-    expect(result.reply).toContain('Which one would you like to search for first?');
+    expect(result.optionId).toBe('attorney');
+    expect(result.categories).toContain('attorney');
+    expect(result.categories).toContain('therapist');
+  });
+
+  it('handles "both" when candidateCategories are provided', () => {
+    const spec = {
+      step: 'category' as const,
+      question: 'What kind of professional are you looking for?',
+      options: [
+        { id: 'attorney', label: 'Divorce attorney', keys: ['attorney'] },
+        { id: 'mediator', label: 'Mediator', keys: ['mediator'] },
+      ],
+    };
+    const result = keywordInterpret(spec, 'both please', geo, ['attorney', 'mediator']);
+    expect(result.optionId).toBe('attorney');
+    expect(result.categories).toEqual(['attorney', 'mediator']);
   });
 });

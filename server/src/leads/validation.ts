@@ -152,6 +152,7 @@ export function createLeadSchemas(geo: Geo) {
       state: z.string().trim().toUpperCase().max(2),
       countyFips: z.string().trim().max(5),
       category: z.enum(CATEGORY_KEYS),
+      categories: z.array(z.enum(CATEGORY_KEYS)).optional(),
       subcategory: optionalText(40),
       /** Checked against a fresh match by the lead service (1–5 unique ids). */
       memberIds: z.array(z.string().trim().min(1).max(64)).max(50),

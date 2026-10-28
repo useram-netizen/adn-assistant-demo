@@ -73,6 +73,7 @@ export interface MatchRequest {
   state: string;
   countyFips: string;
   category: CategoryKey;
+  categories?: CategoryKey[];
   subcategory?: string | null;
 }
 
@@ -134,6 +135,8 @@ export interface InterpretRequest {
   state?: string;
   /** Required for step "subcategory". */
   category?: CategoryKey;
+  /** When multiple categories might match ("both"). */
+  candidateCategories?: CategoryKey[];
   /** The widget's step, so a reply fits what the visitor is looking at (for steps the server has no options for). */
   at?: StepId;
 }
@@ -146,6 +149,8 @@ export interface InterpretRequest {
  */
 export interface Hints {
   category: CategoryKey | null;
+  /** When multiple categories were identified. */
+  categories?: CategoryKey[];
   /** USPS code of a US state or DC. */
   state: string | null;
   /** The place as the visitor wrote it ("Boston", "30060"), for the county lookup. */
@@ -156,6 +161,8 @@ export interface InterpretResponse {
   kind: 'option' | 'question' | 'unclear';
   /** Always one of the step's option ids, or null. */
   optionId: string | null;
+  /** When multiple categories were identified (e.g. "attorney or mediator"). */
+  categories?: CategoryKey[];
   /** A short reply (≤50 words); for "question", the answer to show. May be empty. */
   reply: string;
   /** Show the safety card (keyword match or the AI's safety_concern). */
@@ -242,6 +249,7 @@ export interface LeadRequest extends ContactFields {
   state: string;
   countyFips: string;
   category: CategoryKey;
+  categories?: CategoryKey[];
   subcategory?: string | null;
   stage?: StageKey | null;
   /** 1–5 members from the visitor's results (checked against a fresh match). */

@@ -36,7 +36,7 @@ export const card = (
   tier,
   labels: ['Divorce & family law attorney'],
   serviceArea: tier === 'platinum' ? 'Serves all of Georgia' : 'Serves Fulton, Cobb',
-  badges: tier === 'silver' ? [] : [tier],
+  badges: id === 'p1' ? ['cadp'] : id === 'g1' ? ['founding'] : [],
 });
 
 export const cards = [

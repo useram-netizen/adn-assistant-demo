@@ -54,6 +54,7 @@ export function matchRouter({
       state: stateSchema(geo),
       countyFips: z.string().regex(/^\d{5}$/),
       category: z.enum(CATEGORY_KEYS),
+      categories: z.array(z.enum(CATEGORY_KEYS)).optional(),
       subcategory: z.string().nullish(),
     })
     .superRefine((value, ctx) => {
@@ -74,13 +75,13 @@ export function matchRouter({
   router.post('/match', limiter, async (req, res) => {
     const parsed = body.safeParse(req.body);
     if (!parsed.success) return sendValidationError(res, parsed.error);
-    const { sessionId, site, state, countyFips, category } = parsed.data;
+    const { sessionId, site, state, countyFips, category, categories } = parsed.data;
     const subcategory =
       parsed.data.subcategory && parsed.data.subcategory !== ANY_SUBTYPE
         ? parsed.data.subcategory
         : null;
 
-    const input: MatchInput = { state, countyFips, category, subcategory };
+    const input: MatchInput = { state, countyFips, category, categories, subcategory };
     const matched = directory.match(input, sessionId);
     const counts = Object.fromEntries(TIERS.map((tier) => [tier, 0])) as MatchResponse['counts'];
     for (const member of matched) if (member.tier) counts[member.tier] += 1;
