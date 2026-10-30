@@ -11,6 +11,7 @@ import { log } from '../lib/log.js';
 import type { AiCallKind, AiClient, AiErrorCode, JsonSchema, StructuredRequest } from './client.js';
 import type { StepOption, StepSpec } from './options.js';
 import { limitWords, scrubContactDetails } from './text.js';
+import { findRelevantKnowledge } from './knowledge.js';
 
 /**
  * The four AI calls (spec: "AI (OpenAI)"). Each sends its task as a developer message and its
@@ -142,7 +143,8 @@ Fill in:
 - "reply":
   - For "question": a short, helpful reply (at most 50 words), suited to "where" the visitor is:
     - What a kind of professional does: a general answer. Never give legal, financial, tax or medical advice. If they ask what they should do in their own case (for example "Should I ask for full custody?"), say kindly that you can't advise on that, and name the kind of professional who can help (for custody, a divorce attorney).
-    - About this assistant or the network, or what you can do for them: use only the facts above. Never make up prices, members or policies: what professionals charge, say each sets their own fees and the visitor can ask them; about joining the network or its costs, point to the button about joining; for anything else, say Tracy or the professionals can tell them.
+    - About this assistant or the network, or what you can do for them: use the facts above and any "relevant_knowledge" provided in the data. Never make up prices, members or policies: what professionals charge, say each sets their own fees and the visitor can ask them; about joining the network or its costs, point to the button about joining; for anything else, say Tracy or the professionals can tell them.
+    - If "relevant_knowledge" is provided, ground your answer in those network facts warmly and concisely. Never give legal, financial or tax advice.
     - A greeting: greet them back warmly and say in a few words what you can help with. Thanks: you're welcome. Small talk or off-topic text: say kindly that you're here to help them find divorce professionals.
     - Asked to recommend, rank or name the best professional: say you can't recommend one person, but you'll show them matching members of the network so they can choose.
     - An answer that fits several options or none: say briefly what kind of answer would help.
@@ -238,6 +240,15 @@ export function interpret(
   client: AiClient,
   { spec, text, where = null }: { spec: StepSpec; text: string; where?: string | null },
 ): Promise<AiOutcome<InterpretResult>> {
+  const matchedKnowledge = findRelevantKnowledge(text);
+  const relevantKnowledge =
+    matchedKnowledge.length > 0
+      ? matchedKnowledge.map((item) => ({
+          title: item.title,
+          summary: limitWords(item.content, 120),
+        }))
+      : undefined;
+
   return callAi(
     client,
     {
@@ -253,6 +264,7 @@ export function interpret(
           options: spec.options.map(({ id, label }) => ({ id, label })),
           categories: CATEGORY_DATA.map(({ key, label }) => ({ key, label })),
           visitor_text: scrubContactDetails(text),
+          ...(relevantKnowledge ? { relevant_knowledge: relevantKnowledge } : {}),
         },
       },
     },
