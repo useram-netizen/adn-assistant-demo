@@ -2,6 +2,8 @@ import fs from 'node:fs';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 
+import { repoRoot } from '../paths.js';
+
 export interface KnowledgeItem {
   id: string;
   url: string;
@@ -10,17 +12,20 @@ export interface KnowledgeItem {
   wordCount: number;
 }
 
-const __filename = fileURLToPath(import.meta.url);
-const __dirname = path.dirname(__filename);
-const KNOWLEDGE_PATH = path.resolve(__dirname, '../data/knowledge.json');
+const PRIMARY_KNOWLEDGE_PATH = path.resolve(repoRoot, 'data/knowledge.json');
+const FALLBACK_KNOWLEDGE_PATH = path.resolve(repoRoot, 'server/src/data/knowledge.json');
 
 let cachedKnowledge: KnowledgeItem[] | null = null;
 
 export function getKnowledgeBase(): KnowledgeItem[] {
   if (cachedKnowledge) return cachedKnowledge;
   try {
-    if (fs.existsSync(KNOWLEDGE_PATH)) {
-      const raw = fs.readFileSync(KNOWLEDGE_PATH, 'utf8');
+    const targetPath = fs.existsSync(PRIMARY_KNOWLEDGE_PATH)
+      ? PRIMARY_KNOWLEDGE_PATH
+      : FALLBACK_KNOWLEDGE_PATH;
+
+    if (fs.existsSync(targetPath)) {
+      const raw = fs.readFileSync(targetPath, 'utf8');
       cachedKnowledge = JSON.parse(raw) as KnowledgeItem[];
     } else {
       cachedKnowledge = [];
