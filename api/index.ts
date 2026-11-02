@@ -45,3 +45,4 @@ export default async function handler(req: IncomingMessage, res: ServerResponse)
   const app = await getHandler();
   return app(req, res);
 }
+

@@ -241,6 +241,12 @@ export function interpret(
   { spec, text, where = null }: { spec: StepSpec; text: string; where?: string | null },
 ): Promise<AiOutcome<InterpretResult>> {
   const matchedKnowledge = findRelevantKnowledge(text);
+  if (matchedKnowledge.length > 0) {
+    console.log(
+      `[KNOWLEDGE_BASE_HIT] Matched topics: ${matchedKnowledge.map((k) => k.id).join(', ')} for text: "${text}"`,
+    );
+  }
+
   const relevantKnowledge =
     matchedKnowledge.length > 0
       ? matchedKnowledge.map((item) => ({
